@@ -11,6 +11,8 @@ calibration/
     └── zero_position.py
 ```
 
+<br>
+
 ## motor_id
 
 ### `motor_id.py`
@@ -19,8 +21,8 @@ calibration/
 | --- | --- | --- | --- |
 | `check` | - | `can0 can1` | Check standard motor IDs |
 | `find` | `--motor-id` | `0~127` | Find a motor ID |
-| `set` | `--current-id` | - | Select the ID to change |
-| - | `--new-id` | - | Set the new ID |
+| `set` | `--current-id` | `Required` | Select the ID to change |
+| - | `--new-id` | `Required` | Set the new ID |
 
 ```bash
 # Example
@@ -29,6 +31,8 @@ python3 scripts/calibration/motor_id/motor_id.py find
 python3 scripts/calibration/motor_id/motor_id.py find --motor-id 4
 python3 scripts/calibration/motor_id/motor_id.py set --current-id 1 --new-id 4
 ```
+
+<br>
 
 ## zero_position
 

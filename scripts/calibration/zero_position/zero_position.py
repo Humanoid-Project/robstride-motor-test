@@ -114,6 +114,8 @@ def parse_args():
         description="Set the current position of motors 1-12 as mechanical zero.")
     parser.add_argument("--pos-range", type=int, choices=[0, 1], default=1,
                         help="Set power-on position wrapping: 0=0..2pi, 1=-pi..pi")
+    parser.add_argument("--save", action="store_true",
+                        help="Persist the zero position and position range to flash")
     return parser.parse_args()
 
 
@@ -156,7 +158,10 @@ def main():
 
         position_range = "-pi to pi" if args.pos_range == 1 else "0 to 2pi"
         print(f"Position range: {position_range}.")
-        print("WARNING: Motors will be disabled, zeroed at their current positions, and saved.")
+        if args.save:
+            print("WARNING: Motors will be disabled, zeroed at their current positions, and saved.")
+        else:
+            print("WARNING: Motors will be disabled and zeroed at their current positions without saving.")
 
         answer = input("Press Enter to continue or Ctrl-C to cancel: ")
         del answer
@@ -173,7 +178,8 @@ def main():
 
             set_mechanical_zero(bus, HOST_ID, motor_id)
 
-            save_parameters(bus, HOST_ID, motor_id)
+            if args.save:
+                save_parameters(bus, HOST_ID, motor_id)
 
             after = read_mech_position_retry(bus, HOST_ID, motor_id)
             if after is None:

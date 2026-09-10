@@ -9,6 +9,8 @@ motor_control/
 └── set_motor_pose.py
 ```
 
+<br>
+
 ## motor_control
 
 ### `set_motor_pose.py`
@@ -21,6 +23,8 @@ motor_control/
 # Example
 python3 scripts/motor_control/set_motor_pose.py
 ```
+
+<br>
 
 ### `motor_run_gui.py`
 

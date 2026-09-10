@@ -34,6 +34,8 @@ measurements/
         └── analyze_imu_noise.py
 ```
 
+<br>
+
 ## armature
 
 Armature is the rotational inertia that resists angular acceleration, measured in kg·m².
@@ -42,9 +44,9 @@ Armature is the rotational inertia that resists angular acceleration, measured i
 
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
-| - | `--motor-id` | - | Select the motor |
-| - | `--model` | - | Select `rs02` or `rs03` |
-| - | `--torques` | - | Set test torques in N·m |
+| - | `--motor-id` | `Required` | Select the motor |
+| - | `--model` | `Required` | Select `rs02` or `rs03` |
+| - | `--torques` | `Required` | Set test torques in N·m |
 | - | `--repeats` | `1` | Set repeats per torque |
 | - | `--ignore-joint-limit` | Off | Disable joint-limit checks |
 
@@ -53,12 +55,16 @@ Armature is the rotational inertia that resists angular acceleration, measured i
 python3 scripts/measurements/armature/armature.py --motor-id 11 --model rs02 --torques 0.3 0.5 1.0
 ```
 
+<br>
+
 ### `analyze_armature.py`
 
 ```bash
 # Example
 python3 scripts/measurements/armature/analyze_armature.py "scripts/measurements/armature/data/*.csv"
 ```
+
+<br>
 
 ## check
 
@@ -77,6 +83,8 @@ Applies velocity damping, disables the selected motors, and verifies their opera
 python3 scripts/measurements/check/shutdown.py
 ```
 
+<br>
+
 ## damping
 
 Damping is the velocity-proportional resisting torque, measured in N·m/(rad/s).
@@ -85,9 +93,9 @@ Damping is the velocity-proportional resisting torque, measured in N·m/(rad/s).
 
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
-| - | `--motor-id` | - | Select the motor |
-| - | `--model` | - | Select `rs02` or `rs03` |
-| - | `--speeds` | - | Set test speeds in rad/s |
+| - | `--motor-id` | `Required` | Select the motor |
+| - | `--model` | `Required` | Select `rs02` or `rs03` |
+| - | `--speeds` | `Required` | Set test speeds in rad/s |
 | - | `--repeats` | `1` | Set repeats per speed |
 | - | `--ignore-joint-limit` | Off | Disable joint-limit checks |
 
@@ -96,12 +104,16 @@ Damping is the velocity-proportional resisting torque, measured in N·m/(rad/s).
 python3 scripts/measurements/damping/damping.py --motor-id 4 --model rs03 --speeds 0.15 0.20 0.28
 ```
 
+<br>
+
 ### `analyze_damping.py`
 
 ```bash
 # Example
 python3 scripts/measurements/damping/analyze_damping.py "scripts/measurements/damping/data/*.csv"
 ```
+
+<br>
 
 ## friction
 
@@ -111,8 +123,8 @@ Friction is the breakaway torque required to start a stationary joint moving, me
 
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
-| - | `--motor-id` | - | Select the motor |
-| - | `--model` | - | Select `rs02` or `rs03` |
+| - | `--motor-id` | `Required` | Select the motor |
+| - | `--model` | `Required` | Select `rs02` or `rs03` |
 | - | `--signs` | `1 -1` | Select positive (`1`) or negative (`-1`) motor torque directions |
 | - | `--repeats` | `1` | Set repeats per direction |
 | - | `--ignore-joint-limit` | Off | Disable joint-limit checks |
@@ -122,12 +134,16 @@ Friction is the breakaway torque required to start a stationary joint moving, me
 python3 scripts/measurements/friction/friction.py --motor-id 4 --model rs03
 ```
 
+<br>
+
 ### `analyze_friction.py`
 
 ```bash
 # Example
 python3 scripts/measurements/friction/analyze_friction.py "scripts/measurements/friction/data/*.csv"
 ```
+
+<br>
 
 ## torque
 
@@ -145,6 +161,8 @@ python3 scripts/measurements/friction/analyze_friction.py "scripts/measurements/
 python3 scripts/measurements/torque/torque.py
 ```
 
+<br>
+
 ## joint
 
 ### `read_joint_values.py`
@@ -158,6 +176,8 @@ python3 scripts/measurements/torque/torque.py
 python3 scripts/measurements/joint/read_joint_values.py --watch
 ```
 
+<br>
+
 ### `scan_joint_limits.py`
 
 Tracks the minimum and maximum mechanical positions while each joint is moved by hand, then saves the results as CSV.
@@ -170,6 +190,8 @@ Tracks the minimum and maximum mechanical positions while each joint is moved by
 # Example
 python3 scripts/measurements/joint/scan_joint_limits.py --motor-id 5 6
 ```
+
+<br>
 
 ## noise/motor
 
@@ -187,6 +209,8 @@ Enables stationary motors with velocity damping and records type `0x02` position
 python3 scripts/measurements/noise/motor/motor_noise.py --motor-id 1 2 3 --duration 60
 ```
 
+<br>
+
 ### `analyze_can_noise.py`
 
 Calculates per-motor position mean, position noise, peak-to-peak variation, and velocity noise from motor noise files.
@@ -196,6 +220,8 @@ Calculates per-motor position mean, position noise, peak-to-peak variation, and 
 python3 scripts/measurements/noise/motor/analyze_can_noise.py "scripts/measurements/noise/motor/data/*.csv"
 ```
 
+<br>
+
 ### `analyze_can_rate.py`
 
 Calculates successful response rate, missed replies, update frequency, and timing jitter for each motor and CAN channel.
@@ -204,6 +230,8 @@ Calculates successful response rate, missed replies, update frequency, and timin
 # Example
 python3 scripts/measurements/noise/motor/analyze_can_rate.py "scripts/measurements/noise/motor/data/*.csv"
 ```
+
+<br>
 
 ## noise/imu
 
@@ -218,6 +246,8 @@ cmake -S scripts/measurements/noise/imu \
 cmake --build scripts/measurements/noise/imu/build -j
 ```
 
+<br>
+
 ### `imu_noise.py`
 
 Records stationary N100 raw and fused gyroscope data, acceleration, temperature, and timestamps to CSV.
@@ -231,6 +261,8 @@ Records stationary N100 raw and fused gyroscope data, acceleration, temperature,
 # Example
 python3 scripts/measurements/noise/imu/imu_noise.py --duration 60
 ```
+
+<br>
 
 ### `analyze_imu_noise.py`
 
