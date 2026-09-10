@@ -6,7 +6,7 @@ import time
 
 import can
 from robonex_common.can import FeedbackHub, Motor
-from robonex_common.joints import ACTUATED_JOINTS
+from robonex_common.joints import ACTUATED_JOINTS, DEFAULT_JOINT_POS
 from robonex_common.motors import MOTOR_SPECS
 from robonex_common.protocol import DEFAULT_INTERFACE, HOST_ID, clamp
 from robonex_common.joints import channel_for_motor_id as channel_for_id
@@ -17,18 +17,11 @@ CHANNEL_ID_RANGES = {
 }
 
 MOTORS = {
-    1: {"target_rad": 0.0119, "model": "rs02"},
-    2: {"target_rad": 0.4013, "model": "rs03"},
-    3: {"target_rad": -0.1473, "model": "rs03"},
-    4: {"target_rad": -0.5475, "model": "rs03"},
-    5: {"target_rad": 0.0, "model": "rs02"},
-    6: {"target_rad": 0.0, "model": "rs02"},
-    7: {"target_rad": 0.0016, "model": "rs02"},
-    8: {"target_rad": -0.6227, "model": "rs03"},
-    9: {"target_rad": 0.0114, "model": "rs03"},
-    10: {"target_rad": 0.7454, "model": "rs03"},
-    11: {"target_rad": 0.0, "model": "rs02"},
-    12: {"target_rad": 0.0001, "model": "rs02"},
+    joint.motor_id: {
+        "target_rad": DEFAULT_JOINT_POS[joint.model_name],
+        "model": joint.motor_model,
+    }
+    for joint in ACTUATED_JOINTS
 }
 
 MOVE_SPEED = 0.4
