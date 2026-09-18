@@ -17,6 +17,12 @@ measurements/
 ├── friction/
 │   ├── friction.py
 │   └── analyze_friction.py
+├── kp/
+│   ├── kp.py
+│   └── analyze_kp.py
+├── kd/
+│   ├── kd.py
+│   └── analyze_kd.py
 ├── torque/
 │   └── torque.py
 ├── joint/
@@ -141,6 +147,77 @@ python3 scripts/measurements/friction/friction.py --motor-id 4 --model rs03
 ```bash
 # Example
 python3 scripts/measurements/friction/analyze_friction.py "scripts/measurements/friction/data/*.csv"
+```
+
+<br>
+
+## kp
+
+kp is the position gain the joint actually honours, as a fraction of the value commanded in MIT mode.
+
+### `kp.py`
+
+| Command | Option | Default | Description |
+| --- | --- | --- | --- |
+| - | `--motor-id` | `Required` | Select the motor |
+| - | `--model` | `Required` | Select `rs02` or `rs03` |
+| - | `--kp` | `Required` | Set the position gain to command |
+| - | `--offsets-deg` | `-6 -4 -2 2 4 6` | Set step offsets from the reference, in degrees |
+| - | `--repeats` | `2` | Set repeats per offset |
+| - | `--ignore-joint-limit` | Off | Disable joint-limit checks |
+| - | `--ramp-rate` | `0.15` | Set the commanded position slew between offsets, rad/s |
+
+```bash
+# Example
+python3 scripts/measurements/kp/kp.py --motor-id 4 --model rs03 --kp 100
+```
+
+<br>
+
+### `analyze_kp.py`
+
+```bash
+# Example
+python3 scripts/measurements/kp/analyze_kp.py "scripts/measurements/kp/data/*.csv"
+```
+
+<br>
+
+## kd
+
+kd is the velocity gain the joint actually honours. The position target is held and only the
+velocity target is stepped, so the joint shifts by kd * vel_target / kp without running.
+
+### `kd.py`
+
+| Command | Option | Default | Description |
+| --- | --- | --- | --- |
+| - | `--motor-id` | `Required` | Select the motor |
+| - | `--model` | `Required` | Select `rs02` or `rs03` |
+| - | `--kp` | `Required` | Set the position gain to hold with |
+| - | `--kd` | `Required` | Set the velocity gain to command |
+| - | `--vel-targets` | `-1.0 -0.5 0.5 1.0` | Set velocity targets in rad/s |
+| - | `--repeats` | `2` | Set repeats per target |
+| - | `--ignore-joint-limit` | Off | Disable joint-limit checks |
+| - | `--ramp-time` | `0.5` | Set seconds to ramp the velocity target in; near `0.02` measures latency |
+| - | `--sample-all` | Off | Record the whole hold instead of the settled window |
+
+```bash
+# Example
+python3 scripts/measurements/kd/kd.py --motor-id 4 --model rs03 --kp 100 --kd 2.0
+
+# Latency variant
+python3 scripts/measurements/kd/kd.py --motor-id 4 --model rs03 --kp 100 --kd 2.0 \
+  --ramp-time 0.02 --sample-all
+```
+
+<br>
+
+### `analyze_kd.py`
+
+```bash
+# Example
+python3 scripts/measurements/kd/analyze_kd.py "scripts/measurements/kd/data/*.csv"
 ```
 
 <br>
