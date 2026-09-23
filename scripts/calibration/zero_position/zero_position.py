@@ -17,6 +17,8 @@ from robonex_common.protocol import (
     DEFAULT_INTERFACE,
     HOST_ID,
     MECHANICAL_POSITION_INDEX,
+    RUN_MODE_INDEX,
+    RUN_MODE_OPERATION,
     ZERO_STATUS_INDEX,
     build_arbitration_id,
     parse_arbitration_id,
@@ -105,13 +107,32 @@ def fmt(rad):
     return f"{rad:+8.4f} rad ({math.degrees(rad):+8.2f} deg)"
 
 
-def angular_diff(a, b):
-    return (a - b + math.pi) % TWO_PI - math.pi
+def at_zero(position, pos_range):
+    if pos_range == 1:
+        return abs(position) <= ZERO_TOLERANCE
+    return abs(position) <= ZERO_TOLERANCE or abs(position - TWO_PI) <= ZERO_TOLERANCE
+
+
+def parse_ids(value):
+    ids = []
+    for item in value.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        motor_id = int(item, 0)
+        if motor_id not in JOINT_MAP:
+            raise argparse.ArgumentTypeError(f"ID {motor_id} is not a RoboNex motor (1-12)")
+        ids.append(motor_id)
+    if not ids:
+        raise argparse.ArgumentTypeError("give at least one motor ID")
+    return sorted(set(ids))
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Set the current position of motors 1-12 as mechanical zero.")
+    parser.add_argument("--ids", type=parse_ids, default=None,
+                        help="Comma-separated motor IDs to zero, e.g. 4,10 (default: all 12)")
     parser.add_argument("--pos-range", type=int, choices=[0, 1], default=1,
                         help="Set power-on position wrapping: 0=0..2pi, 1=-pi..pi")
     parser.add_argument("--save", action="store_true",
@@ -125,7 +146,7 @@ def main():
         print("This command requires an interactive terminal for confirmation.")
         return 1
 
-    active_ids = sorted(
+    active_ids = args.ids or sorted(
         motor_id
         for channel in CHANNEL_MOTOR_IDS
         for motor_id in CHANNEL_MOTOR_IDS[channel]
@@ -133,7 +154,7 @@ def main():
 
     buses = {}
     try:
-        for channel in CHANNEL_MOTOR_IDS:
+        for channel in sorted({channel_for_id(motor_id) for motor_id in active_ids}):
             buses[channel] = can.Bus(channel=channel, interface=DEFAULT_INTERFACE)
 
         print("Scanning motors...")
@@ -157,6 +178,7 @@ def main():
             return 1
 
         position_range = "-pi to pi" if args.pos_range == 1 else "0 to 2pi"
+        print(f"Target IDs: {', '.join(str(i) for i in sorted(before))}.")
         print(f"Position range: {position_range}.")
         if args.save:
             print("WARNING: Motors will be disabled, zeroed at their current positions, and saved.")
@@ -174,6 +196,8 @@ def main():
 
             stop_motor(bus, HOST_ID, motor_id)
 
+            write_uint8_parameter(bus, HOST_ID, motor_id, RUN_MODE_INDEX, RUN_MODE_OPERATION)
+
             write_uint8_parameter(bus, HOST_ID, motor_id, ZERO_STATUS_INDEX, args.pos_range)
 
             set_mechanical_zero(bus, HOST_ID, motor_id)
@@ -186,7 +210,7 @@ def main():
                 print(f"ID {motor_id} ({channel}, {joint_name(motor_id)}): FAILED - no reply")
                 continue
 
-            success = abs(angular_diff(after, 0.0)) <= ZERO_TOLERANCE
+            success = at_zero(after, args.pos_range)
             if success:
                 ok_count += 1
             result = "OK" if success else "WARNING - not at zero"

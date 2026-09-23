@@ -40,11 +40,13 @@ python3 scripts/calibration/motor_id/motor_id.py set --current-id 1 --new-id 4
 
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
+| - | `--ids` | All 12 | Comma-separated motor IDs to zero |
 | - | `--pos-range` | `1` | Set the power-on angle range (`0`: `0..2π`, `1`: `-π..π`) |
+| - | `--save` | Off | Persist the zero and angle range to flash |
 
 ```bash
 # Example
 python3 scripts/calibration/zero_position/zero_position.py
-python3 scripts/calibration/zero_position/zero_position.py --pos-range 0
+python3 scripts/calibration/zero_position/zero_position.py --ids 4,10
 python3 scripts/calibration/zero_position/zero_position.py --pos-range 1
 ```
