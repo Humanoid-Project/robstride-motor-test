@@ -21,6 +21,8 @@ import can
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common import (
+    shutdown_motor,
+    resolve_model,
     HOST_ID, DEFAULT_INTERFACE, SPECS,
     RUN_MODE_INDEX, RUN_MODE_OPERATION,
     Motor, channel_for_id, active_brake,
@@ -36,7 +38,7 @@ ARG_CHECKS = [("kp", "positive"), ("kd", "positive"), ("settle-time", "positive"
 def parse_args():
     p = argparse.ArgumentParser(description="Measure a joint's effective velocity gain.")
     p.add_argument("--motor-id", type=lambda v: int(v, 0), required=True)
-    p.add_argument("--model", choices=list(SPECS.keys()), required=True)
+    p.add_argument("--model", choices=list(SPECS.keys()), default=None)
     p.add_argument("--kp", type=float, required=True, help="Position gain to hold with")
     p.add_argument("--kd", type=float, required=True,
                    help="Velocity gain to command; the measurement checks whether it is honoured")
@@ -52,7 +54,7 @@ def parse_args():
     p.set_defaults(interface=DEFAULT_INTERFACE, host_id=HOST_ID,
                    settle_time=1.0, sample_time=0.5,
                    feedback_timeout=0.3, limit_margin=DEFAULT_LIMIT_MARGIN_RAD, out=None)
-    return p.parse_args()
+    return resolve_model(p, p.parse_args())
 
 
 def confirm(args):
@@ -185,12 +187,7 @@ def main():
     except KeyboardInterrupt:
         print("\nStop requested.")
     finally:
-        try:
-            active_brake(motor)
-            motor.stop()
-        except Exception:
-            pass
-        bus.shutdown()
+        shutdown_motor(motor, bus, (active_brake,))
 
     if rows:
         import csv as _csv

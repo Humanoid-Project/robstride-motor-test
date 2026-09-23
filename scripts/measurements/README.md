@@ -51,7 +51,7 @@ Armature is the rotational inertia that resists angular acceleration, measured i
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
 | - | `--motor-id` | `Required` | Select the motor |
-| - | `--model` | `Required` | Select `rs02` or `rs03` |
+| - | `--model` | `Auto from ID` | `rs02` or `rs03`; must match the ID, required only for an ID outside 1-12 |
 | - | `--torques` | `Required` | Set test torques in N·m |
 | - | `--repeats` | `1` | Set repeats per torque |
 | - | `--ignore-joint-limit` | Off | Disable joint-limit checks |
@@ -100,7 +100,7 @@ Damping is the velocity-proportional resisting torque, measured in N·m/(rad/s).
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
 | - | `--motor-id` | `Required` | Select the motor |
-| - | `--model` | `Required` | Select `rs02` or `rs03` |
+| - | `--model` | `Auto from ID` | `rs02` or `rs03`; must match the ID, required only for an ID outside 1-12 |
 | - | `--speeds` | `Required` | Set test speeds in rad/s |
 | - | `--repeats` | `1` | Set repeats per speed |
 | - | `--ignore-joint-limit` | Off | Disable joint-limit checks |
@@ -130,7 +130,7 @@ Friction is the breakaway torque required to start a stationary joint moving, me
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
 | - | `--motor-id` | `Required` | Select the motor |
-| - | `--model` | `Required` | Select `rs02` or `rs03` |
+| - | `--model` | `Auto from ID` | `rs02` or `rs03`; must match the ID, required only for an ID outside 1-12 |
 | - | `--signs` | `1 -1` | Select positive (`1`) or negative (`-1`) motor torque directions |
 | - | `--repeats` | `1` | Set repeats per direction |
 | - | `--ignore-joint-limit` | Off | Disable joint-limit checks |
@@ -160,7 +160,7 @@ kp is the position gain the joint actually honours, as a fraction of the value c
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
 | - | `--motor-id` | `Required` | Select the motor |
-| - | `--model` | `Required` | Select `rs02` or `rs03` |
+| - | `--model` | `Auto from ID` | `rs02` or `rs03`; must match the ID, required only for an ID outside 1-12 |
 | - | `--kp` | `Required` | Set the position gain to command |
 | - | `--offsets-deg` | `-6 -4 -2 2 4 6` | Set step offsets from the reference, in degrees |
 | - | `--repeats` | `2` | Set repeats per offset |
@@ -193,7 +193,7 @@ velocity target is stepped, so the joint shifts by kd * vel_target / kp without 
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
 | - | `--motor-id` | `Required` | Select the motor |
-| - | `--model` | `Required` | Select `rs02` or `rs03` |
+| - | `--model` | `Auto from ID` | `rs02` or `rs03`; must match the ID, required only for an ID outside 1-12 |
 | - | `--kp` | `Required` | Set the position gain to hold with |
 | - | `--kd` | `Required` | Set the velocity gain to command |
 | - | `--vel-targets` | `-1.0 -0.5 0.5 1.0` | Set velocity targets in rad/s |

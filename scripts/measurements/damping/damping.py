@@ -16,6 +16,8 @@ import can
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common import (
+    shutdown_motor,
+    resolve_model,
     HOST_ID, DEFAULT_INTERFACE, SPECS,
     RUN_MODE_INDEX, RUN_MODE_OPERATION, MECH_POS_INDEX, FAULT_STA_INDEX,
     Motor, channel_for_id, decode_fault_bits, active_brake,
@@ -44,7 +46,7 @@ def positive_int(value):
 def parse_args():
     p = argparse.ArgumentParser(description="Measure and analyze motor damping.")
     p.add_argument("--motor-id", type=lambda v: int(v, 0), required=True)
-    p.add_argument("--model", choices=list(SPECS.keys()), required=True)
+    p.add_argument("--model", choices=list(SPECS.keys()), default=None)
     p.add_argument("--speeds", type=float, nargs="+", required=True,
                    help="Signed target speeds in rad/s")
     p.add_argument("--repeats", type=positive_int, default=1, help="Repeats per speed")
@@ -56,7 +58,7 @@ def parse_args():
         limit_margin=DEFAULT_LIMIT_MARGIN_RAD,
         feedback_timeout=0.3, out=None,
     )
-    return p.parse_args()
+    return resolve_model(p, p.parse_args())
 
 
 def confirm(args, model):
@@ -126,7 +128,12 @@ def ramp_to_speed(motor, target_speed, kd, pos_ref, args, label):
 
 
 def return_to_zero(motor, timeout=2.5, kp=15.0, kd=3.0, pos_tol=0.02, max_speed=0.4):
-    fb = motor.poll_feedback(timeout=0.1)
+    fb = None
+    for _ in range(3):
+        motor.control(pos=0.0, vel=0.0, kp=0.0, kd=kd, torque=0.0)
+        fb = motor.poll_feedback(timeout=0.1)
+        if fb is not None:
+            break
     if fb is None:
         return None
     _, start_pos, _, _, _, _ = fb
@@ -263,21 +270,15 @@ def capture_once(args, speed, run_index):
         ramp_to_speed(motor, 0.0, args.kd, None, args, "ramp-down")
         print("Returning to zero...")
         final_pos = return_to_zero(motor)
-        print(f"Return position: {final_pos:+.4f} rad ({math.degrees(final_pos):+.2f} deg)")
+        if final_pos is None:
+            print("Return position: unknown (no feedback)")
+        else:
+            print(f"Return position: {final_pos:+.4f} rad ({math.degrees(final_pos):+.2f} deg)")
     except KeyboardInterrupt:
         print("\nInterrupted.")
         stop_reason = "keyboard_interrupt"
     finally:
-        if motor is not None:
-            try:
-                active_brake(motor)
-            except can.CanError:
-                pass
-            try:
-                motor.stop()
-            except can.CanError:
-                pass
-        bus.shutdown()
+        shutdown_motor(motor, bus, (active_brake,))
 
     if not rows:
         print(f"ERROR: No samples recorded ({stop_reason}).")

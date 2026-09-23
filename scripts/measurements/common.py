@@ -1,8 +1,9 @@
 import math
+import signal
 import time
 
 from robonex_common.can import FeedbackHub, Motor
-from robonex_common.joints import ACTUATED_JOINTS, JOINT_LIMITS_BY_ID
+from robonex_common.joints import ACTUATED_JOINTS, JOINT_BY_ID, JOINT_LIMITS_BY_ID
 from robonex_common.joints import channel_for_motor_id as channel_for_id
 from robonex_common.limits import DEFAULT_LIMIT_MARGIN_RAD, exceeds_joint_limit, joint_limit_for
 from robonex_common.motors import MOTOR_SPECS, PEAK_TORQUE, RATED_TORQUE
@@ -24,6 +25,49 @@ MECH_POS_INDEX = MECHANICAL_POSITION_INDEX
 FAULT_STA_INDEX = FAULT_STATUS_INDEX
 PLACEHOLDER_ARMATURE = {"rs02": 0.003, "rs03": 0.017}
 PLACEHOLDER_DAMPING = {"rs02": 0.2, "rs03": 0.2}
+
+def resolve_model(parser, args):
+    joint = JOINT_BY_ID.get(args.motor_id)
+    if joint is None:
+        if args.model is None:
+            parser.error(f"ID {args.motor_id} is not a RoboNex joint; pass --model explicitly")
+        return args
+    if args.model is None:
+        args.model = joint.motor_model
+    elif args.model != joint.motor_model:
+        parser.error(
+            f"--model {args.model} does not match ID {args.motor_id} "
+            f"({joint.hardware_name}), which is {joint.motor_model}"
+        )
+    return args
+
+
+def shutdown_motor(motor, bus, steps=()):
+    try:
+        if motor is not None:
+            for step in steps:
+                try:
+                    step(motor)
+                except KeyboardInterrupt:
+                    print("\nCleanup interrupted; stopping the motor now.")
+                    break
+                except Exception as error:
+                    print(f"\nCleanup step {step.__name__} failed ({error}); stopping the motor now.")
+                    break
+    except KeyboardInterrupt:
+        pass
+    finally:
+        previous = signal.signal(signal.SIGINT, signal.SIG_IGN)
+        try:
+            if motor is not None:
+                try:
+                    motor.stop()
+                except Exception as error:
+                    print(f"Stop frame failed: {error}")
+            bus.shutdown()
+        finally:
+            signal.signal(signal.SIGINT, previous)
+
 
 def validate_args(args, model, checks):
     spec = SPECS[model]

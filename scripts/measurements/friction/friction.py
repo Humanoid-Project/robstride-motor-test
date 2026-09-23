@@ -16,6 +16,8 @@ import can
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common import (
+    shutdown_motor,
+    resolve_model,
     HOST_ID, DEFAULT_INTERFACE, SPECS, RATED_TORQUE, PEAK_TORQUE,
     RUN_MODE_INDEX, RUN_MODE_OPERATION, MECH_POS_INDEX, FAULT_STA_INDEX,
     Motor, channel_for_id, decode_fault_bits, active_brake,
@@ -47,7 +49,7 @@ def positive_int(value):
 def parse_args():
     p = argparse.ArgumentParser(description="Measure and analyze motor breakaway friction.")
     p.add_argument("--motor-id", type=lambda v: int(v, 0), required=True)
-    p.add_argument("--model", choices=list(SPECS.keys()), required=True)
+    p.add_argument("--model", choices=list(SPECS.keys()), default=None)
     p.add_argument("--signs", type=int, nargs="+", choices=[1, -1], default=[1, -1],
                    help="Motor torque directions")
     p.add_argument("--repeats", type=positive_int, default=1, help="Repeats per direction")
@@ -61,7 +63,7 @@ def parse_args():
         settle_max_vel=3.0, feedback_timeout=0.3, out=None,
         limit_margin=DEFAULT_LIMIT_MARGIN_RAD,
     )
-    return p.parse_args()
+    return resolve_model(p, p.parse_args())
 
 
 def confirm(args, model):
@@ -133,7 +135,12 @@ def wait_settled(motor, hold_pos, args):
 
 
 def return_to_zero(motor, timeout=2.5, kp=15.0, kd=3.0, pos_tol=0.02, max_speed=0.4):
-    fb = motor.poll_feedback(timeout=0.1)
+    fb = None
+    for _ in range(3):
+        motor.control(pos=0.0, vel=0.0, kp=0.0, kd=kd, torque=0.0)
+        fb = motor.poll_feedback(timeout=0.1)
+        if fb is not None:
+            break
     if fb is None:
         print("WARNING: Return position unavailable; sending stop only.")
         return None
@@ -291,20 +298,7 @@ def capture_once(args, sign, run_index):
         print("\nInterrupted.")
         stop_reason = "keyboard_interrupt"
     finally:
-        if motor is not None:
-            try:
-                active_brake(motor)
-            except can.CanError:
-                pass
-            try:
-                return_to_zero(motor)
-            except can.CanError:
-                pass
-            try:
-                motor.stop()
-            except can.CanError:
-                pass
-        bus.shutdown()
+        shutdown_motor(motor, bus, (active_brake, return_to_zero))
 
     if not rows:
         print(f"ERROR: No samples recorded ({stop_reason}).")

@@ -14,7 +14,7 @@ import numpy as np
 
 
 def load(path):
-    header, rows = {}, []
+    header, rows, columns = {}, [], None
     for row in csv.reader(open(path)):
         if not row:
             continue
@@ -25,20 +25,26 @@ def load(path):
                 header[cells[i]] = cells[i + 1]
             continue
         if row[0] == "repeat":
+            columns = [c.strip() for c in row]
             continue
         rows.append([float(v) for v in row])
-    return header, np.array(rows)
+    return header, columns, np.array(rows)
 
 
 def main():
     if len(sys.argv) < 2:
         print("usage: analyze_kd.py <capture.csv> [measured_kp]")
         return 1
-    h, a = load(sys.argv[1])
+    h, columns, a = load(sys.argv[1])
     if a.size == 0:
         print("no samples")
         return 1
-    rep, vt, pt, pos, vel, tq, temp = (a[:, i] for i in range(7))
+    names = ("repeat", "vel_target", "pos_target", "pos_rad", "vel_rad_s", "torque_nm", "temp_c")
+    missing = [name for name in names if columns is None or name not in columns]
+    if missing:
+        print(f"missing columns: {', '.join(missing)}")
+        return 1
+    rep, vt, pt, pos, vel, tq, temp = (a[:, columns.index(name)] for name in names)
     kp_cmd = float(h.get("commanded_kp", "nan"))
     kd_cmd = float(h.get("commanded_kd", "nan"))
     e = pt - pos

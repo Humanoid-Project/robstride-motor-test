@@ -10,6 +10,8 @@ import can
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common import (
+    shutdown_motor,
+    resolve_model,
     HOST_ID, DEFAULT_INTERFACE, SPECS, RATED_TORQUE, PEAK_TORQUE,
     RUN_MODE_INDEX, RUN_MODE_OPERATION, MECH_POS_INDEX, FAULT_STA_INDEX,
     Motor, channel_for_id, decode_fault_bits, active_brake,
@@ -40,7 +42,7 @@ def positive_int(value):
 def parse_args():
     p = argparse.ArgumentParser(description="Measure and analyze motor armature response.")
     p.add_argument("--motor-id", type=lambda v: int(v, 0), required=True)
-    p.add_argument("--model", choices=list(SPECS.keys()), required=True)
+    p.add_argument("--model", choices=list(SPECS.keys()), default=None)
     p.add_argument("--torques", type=float, nargs="+", required=True,
                    help="Signed feedforward torques in N*m")
     p.add_argument("--repeats", type=positive_int, default=1, help="Repeats per torque")
@@ -54,7 +56,7 @@ def parse_args():
         poll_timeout=0.03, rate=0.0, out=None,
         limit_margin=DEFAULT_LIMIT_MARGIN_RAD,
     )
-    return p.parse_args()
+    return resolve_model(p, p.parse_args())
 
 
 def confirm(args, model):
@@ -226,16 +228,7 @@ def capture_once(args, torque, run_index):
         print("\nInterrupted.")
         stop_reason = "keyboard_interrupt"
     finally:
-        if motor is not None:
-            try:
-                active_brake(motor)
-            except can.CanError:
-                pass
-            try:
-                motor.stop()
-            except can.CanError:
-                pass
-        bus.shutdown()
+        shutdown_motor(motor, bus, (active_brake,))
 
     if not rows:
         print(f"ERROR: No samples recorded ({stop_reason}).")
