@@ -3,6 +3,7 @@ import argparse
 import collections
 import math
 import queue
+import signal
 import struct
 import threading
 import time
@@ -1326,8 +1327,14 @@ def parse_args(argv=None):
 def main():
     args = parse_args()
     root = tk.Tk()
-    MotorRunApp(root, args)
-    root.mainloop()
+    app = MotorRunApp(root, args)
+    signal.signal(signal.SIGINT, lambda _signum, _frame: root.after_idle(app.on_close))
+    try:
+        root.mainloop()
+    finally:
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        for panel in app.panels:
+            panel.shutdown()
 
 if __name__ == "__main__":
     main()

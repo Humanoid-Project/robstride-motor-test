@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import math
+import signal
 import sys
 import time
 
@@ -30,6 +31,7 @@ RATE = 100.0
 HOLD_KP = 40.0
 HOLD_KD = 2.0
 OVERSPEED_STOP = 2.0
+TRACKING_STOP = math.radians(25.0)
 FEEDBACK_TIMEOUT = 0.3
 SPECS = MOTOR_SPECS
 JOINT_MAP = {joint.motor_id: joint.hardware_name for joint in ACTUATED_JOINTS}
@@ -96,6 +98,12 @@ def main():
                       f"{m['motor'].spec.name:<5}  {'no response':>26}")
                 print(f"\nMotor ID {motor_id} did not respond. Check power, wiring, and ID.")
                 return 1
+            if abs(current) > math.pi:
+                print(f"{motor_id:>3}  {channel:<5}  {JOINT_MAP.get(motor_id, '?'):<18}  "
+                      f"{m['motor'].spec.name:<5}  {fmt(current):>26}")
+                print(f"\nMotor ID {motor_id} reads outside -180..+180 deg. "
+                      "Set zero_sta=1 (0x7029) on it before moving.")
+                return 1
             target = current if m["target_cfg"] is None else m["target_cfg"]
             m["target"] = clamp(target, m["motor"].spec.p_min, m["motor"].spec.p_max)
             travel = abs(m["target"] - current)
@@ -134,9 +142,13 @@ def main():
             if start is None:
                 emergency_stop(f"ID {m['motor'].motor_id} has no live feedback")
                 return 1
+            if abs(start) > math.pi:
+                emergency_stop(f"ID {motor_id} feedback {fmt(start)} is outside -180..+180 deg (zero_sta)")
+                return 1
             m["start"] = start
             if m["target_cfg"] is None:
                 m["target"] = start
+            m["cmd"] = start
             m["motor"].control(pos=start, vel=0.0, kp=HOLD_KP, kd=HOLD_KD)
 
         move_time = MIN_MOVE_TIME
@@ -156,6 +168,9 @@ def main():
                 age = now - motor.last_feedback_time
                 if age > FEEDBACK_TIMEOUT:
                     return f"ID {mid} feedback timeout ({age:.2f} s > {FEEDBACK_TIMEOUT} s)"
+                if motor.last_position is not None and abs(mm["cmd"] - motor.last_position) > TRACKING_STOP:
+                    return (f"ID {mid} tracking error "
+                            f"{math.degrees(mm['cmd'] - motor.last_position):+.1f} deg")
             return None
 
         print(f"Starting move ({move_time:.1f} s)...")
@@ -167,8 +182,9 @@ def main():
             smooth_vel = 6.0 * progress * (1.0 - progress) / move_time
             for m in motors.values():
                 travel = m["target"] - m["start"]
+                m["cmd"] = m["start"] + travel * smooth
                 m["motor"].control(
-                    pos=m["start"] + travel * smooth,
+                    pos=m["cmd"],
                     vel=clamp(travel * smooth_vel, -MOVE_SPEED, MOVE_SPEED),
                     kp=HOLD_KP, kd=HOLD_KD,
                 )
@@ -189,6 +205,7 @@ def main():
         while True:
             now = time.monotonic()
             for m in motors.values():
+                m["cmd"] = m["target"]
                 m["motor"].control(pos=m["target"], vel=0.0, kp=HOLD_KP, kd=HOLD_KD)
             for hub in hubs.values():
                 hub.pump()
@@ -224,6 +241,7 @@ def main():
     except KeyboardInterrupt:
         print("\n\nStop requested. Stopping motors...")
     finally:
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
         for m in motors.values():
             try:
                 m["motor"].stop()
@@ -231,6 +249,7 @@ def main():
                 pass
         for bus in buses.values():
             bus.shutdown()
+        signal.signal(signal.SIGINT, signal.default_int_handler)
         print("Stopped.")
     return 0
 
