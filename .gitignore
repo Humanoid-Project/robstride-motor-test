@@ -1,21 +1,11 @@
-.venv/
-.venv*/
+# Agent and editor settings
+.claude/
 .vscode/
 
+# Python
+.venv*/
 __pycache__/
-*.pyc
 
-scripts/measurements/noise/imu/build/
-scripts/measurements/**/logs/
+# Measurement data
 scripts/measurements/**/data/
 scripts/measurements/joint/joint_limit/
-*.so
-*.a
-
-.agents/
-.codex/
-.claude/
-.grok/
-AGENTS.md
-
-docs/
