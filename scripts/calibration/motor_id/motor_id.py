@@ -261,10 +261,6 @@ def run_set(args):
             print(f"ERROR: ID {args.current_id} found on multiple channels: {channels}")
             return 1
         channel, bus, current = matches[0]
-        if args.new_id not in CHANNEL_MOTOR_IDS[channel]:
-            valid_ids = ", ".join(str(motor_id) for motor_id in CHANNEL_MOTOR_IDS[channel])
-            print(f"ERROR: ID {args.new_id} is not assigned to {channel}; use one of: {valid_ids}")
-            return 1
         occupied = probe_motor(bus, args.new_id, QUERY_TIMEOUT)
         if occupied is not None:
             print(f"ERROR: ID {args.new_id} is already in use on {channel}")

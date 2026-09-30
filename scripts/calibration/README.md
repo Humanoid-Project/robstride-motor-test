@@ -23,7 +23,7 @@ calibration/
 | `find` | `--motor-id` | `0~127` | Find a motor ID |
 | - | `--can` | `can0 can1` | Select the CAN channel to search |
 | `set` | `--current-id` | `Required` | Select the ID to change |
-| - | `--new-id` | `Required` | Set the new ID |
+| - | `--new-id` | `Required` | Set the new ID (`1~127`) |
 | - | `--can` | `can0 can1` | Select the CAN channel of the motor |
 
 ```bash
