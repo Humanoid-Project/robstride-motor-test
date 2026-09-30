@@ -17,12 +17,14 @@ motor_control/
 
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
-| - | `--ids` | `1`–`12` | Motor IDs to move: leg motors go to the policy default pose, other registered motors (`13` head) to 0 rad |
+| - | `--ids` | `legs` | Motors to move: IDs, groups or joint names; leg motors go to the policy default pose, head and arm motors to 0 rad |
+| - | `--allow-placeholder-limits` | Off | Allow head (`13`, `14`) and arm (`15`–`18`, `20`–`23`) motors, whose limits are PLACEHOLDERs |
 
 ```bash
 # Example
 python3 scripts/motor_control/set_motor_pose.py
-python3 scripts/motor_control/set_motor_pose.py --ids 13
+python3 scripts/motor_control/set_motor_pose.py --ids left_leg
+python3 scripts/motor_control/set_motor_pose.py --ids head --allow-placeholder-limits
 ```
 
 <br>
@@ -31,10 +33,11 @@ python3 scripts/motor_control/set_motor_pose.py --ids 13
 
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
-| - | `--motor-id` | `5` | Select one motor or two motors on the same CAN channel |
+| - | `--motor-id` | `5` | Select one motor or two motors on the same CAN channel (any registered ID `1`–`18`, `20`–`23`) |
 
 ```bash
 # Example
 python3 scripts/motor_control/motor_run_gui.py --motor-id 4
 python3 scripts/motor_control/motor_run_gui.py --motor-id 5 6
+python3 scripts/motor_control/motor_run_gui.py --motor-id 15
 ```

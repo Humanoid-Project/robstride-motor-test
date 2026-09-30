@@ -80,13 +80,14 @@ Applies velocity damping, disables the selected motors, and verifies their opera
 
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
-| - | `--ids` | All motors | Select motors to disable |
+| - | `--ids` | Attached robot | Select motors to disable: IDs, groups (`legs`, `head`, `arms`, …) or joint names |
 | - | `--brake-time` | `0.3` | Set braking time in seconds |
 | - | `--kd` | `3.0` | Set braking damping gain |
 
 ```bash
 # Example
 python3 scripts/measurements/check/shutdown.py
+python3 scripts/measurements/check/shutdown.py --ids head arms
 ```
 
 <br>
@@ -224,7 +225,7 @@ python3 scripts/measurements/kd/analyze_kd.py "scripts/measurements/kd/data/*.cs
 
 ## torque
 
-`torque.py` passively displays type `0x02` torque feedback from every registered motor. It sends no CAN frames, so a motor controller such as `mujoco_to_real.py` must run separately. The displayed value is the motor controller's internal torque estimate, not an independent load-cell measurement.
+`torque.py` passively displays type `0x02` torque feedback from every motor of the attached robot. It sends no CAN frames, so a motor controller such as `mujoco_to_real.py` must run separately. The displayed value is the motor controller's internal torque estimate, not an independent load-cell measurement.
 
 ### `torque.py`
 
@@ -244,14 +245,37 @@ python3 scripts/measurements/torque/torque.py
 
 ### `read_joint_values.py`
 
+Reads the type `0x11` mechanical position of each motor, grouped by CAN channel; it never enables a motor.
+
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
+| - | `--ids` | Attached robot | Select motors: IDs, groups (`left_leg`, `right_leg`, `left_arm`, `right_arm`, `head`, `legs`, `arms`, `all`) or joint names |
+| - | `--can` | All | Read only the selected motors on this CAN channel |
 | - | `--watch` | Off | Continuously refresh joint values |
+| - | `--hz` | `10` | Set the `--watch` screen refresh rate |
+| - | `--duration` | `0` | Stop `--watch` after this many seconds (`0`: until Ctrl-C) |
+| - | `--csv` | - | Write every reading as a timestamped row |
 
 ```bash
 # Example
+python3 scripts/measurements/joint/read_joint_values.py
+python3 scripts/measurements/joint/read_joint_values.py --ids head
+python3 scripts/measurements/joint/read_joint_values.py --ids left_leg 13
+python3 scripts/measurements/joint/read_joint_values.py --ids left_knee_pitch,right_knee_pitch
+python3 scripts/measurements/joint/read_joint_values.py --can can1
 python3 scripts/measurements/joint/read_joint_values.py --watch
+python3 scripts/measurements/joint/read_joint_values.py --watch --hz 20 --ids arms
+
+# Log for 30 s
+python3 scripts/measurements/joint/read_joint_values.py \
+    --watch \
+    --duration 30 \
+    --csv joint_log.csv
 ```
+
+| Output | Description |
+| --- | --- |
+| `--csv` file | `time_s`, `unix_time`, `channel`, `motor_id`, `joint`, `position_rad` (empty: no response) |
 
 <br>
 
