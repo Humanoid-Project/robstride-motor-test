@@ -148,9 +148,13 @@ def scan_ids(bus, targets, timeout):
     return found
 
 
-def run_check(_args):
+def selected_channels(args):
+    return [args.can] if args.can else list(CHANNEL_MOTOR_IDS)
+
+
+def run_check(args):
     failed = False
-    for channel in CHANNEL_MOTOR_IDS:
+    for channel in selected_channels(args):
         targets = CHANNEL_MOTOR_IDS[channel]
         bus = None
         try:
@@ -175,7 +179,7 @@ def run_check(_args):
 def run_find(args):
     found_any = False
     failed = False
-    for channel in CHANNEL_MOTOR_IDS:
+    for channel in selected_channels(args):
         bus = None
         try:
             bus = open_bus(channel)
@@ -242,7 +246,7 @@ def run_set(args):
         return 0
     buses = {}
     try:
-        for channel in CHANNEL_MOTOR_IDS:
+        for channel in selected_channels(args):
             buses[channel] = open_bus(channel)
         matches = []
         for channel, candidate_bus in buses.items():
@@ -287,15 +291,18 @@ def run_set(args):
 def build_parser():
     parser = argparse.ArgumentParser(description="Check, find, or change a Robstride motor CAN ID.")
     commands = parser.add_subparsers(dest="command", required=True)
+    can_option = argparse.ArgumentParser(add_help=False)
+    can_option.add_argument("--can", choices=list(CHANNEL_MOTOR_IDS), default=None,
+                            help="CAN channel to use (default: all)")
 
-    check = commands.add_parser("check", help="Check the standard can0/can1 ID layout")
+    check = commands.add_parser("check", parents=[can_option], help="Check the standard can0/can1 ID layout")
     check.set_defaults(handler=run_check)
 
-    find = commands.add_parser("find", help="Search for motor IDs on can0 and can1")
+    find = commands.add_parser("find", parents=[can_option], help="Search for motor IDs on can0 and can1")
     find.add_argument("--motor-id", type=parse_id)
     find.set_defaults(handler=run_find)
 
-    set_id = commands.add_parser("set", help="Permanently change a motor CAN ID")
+    set_id = commands.add_parser("set", parents=[can_option], help="Permanently change a motor CAN ID")
     set_id.add_argument("--current-id", type=parse_id, required=True)
     set_id.add_argument("--new-id", type=parse_new_id, required=True)
     set_id.set_defaults(handler=run_set)

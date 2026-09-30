@@ -19,10 +19,12 @@ calibration/
 
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
-| `check` | - | `can0 can1` | Check standard motor IDs |
+| `check` | `--can` | `can0 can1` | Check standard motor IDs on one channel or both |
 | `find` | `--motor-id` | `0~127` | Find a motor ID |
+| - | `--can` | `can0 can1` | Select the CAN channel to search |
 | `set` | `--current-id` | `Required` | Select the ID to change |
 | - | `--new-id` | `Required` | Set the new ID |
+| - | `--can` | `can0 can1` | Select the CAN channel of the motor |
 
 ```bash
 # Example
@@ -30,6 +32,7 @@ python3 scripts/calibration/motor_id/motor_id.py check
 python3 scripts/calibration/motor_id/motor_id.py find
 python3 scripts/calibration/motor_id/motor_id.py find --motor-id 4
 python3 scripts/calibration/motor_id/motor_id.py set --current-id 1 --new-id 4
+python3 scripts/calibration/motor_id/motor_id.py set --can can1 --current-id 1 --new-id 8
 ```
 
 <br>
