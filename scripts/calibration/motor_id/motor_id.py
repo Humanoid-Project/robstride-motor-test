@@ -266,12 +266,10 @@ def run_set(args):
             print(f"ERROR: ID {args.new_id} is already in use on {channel}")
             return 1
         print(f"WARNING: connect only the target motor ({channel}, ID {args.current_id})")
-        expected = f"CHANGE {args.current_id} {args.new_id}"
+        print(f"ID {args.current_id} -> {args.new_id} on {channel} is a permanent change.")
         try:
-            reply = input(f"Type '{expected}' exactly to make a permanent change: ")
+            input("Press Enter to continue or Ctrl-C to cancel: ")
         except EOFError:
-            reply = ""
-        if reply.strip() != expected:
             print("Cancelled.")
             return 1
         send_stop(bus, args.current_id)
