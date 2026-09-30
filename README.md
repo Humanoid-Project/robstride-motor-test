@@ -23,7 +23,6 @@ pip install -r requirements.txt
 | `1`–`6` | `left_hip_yaw` … `left_ankle_lower` | `left_leg` | rs02/rs03 | `can0` | ✓ | ✓ | ✓ |
 | `7`–`12` | `right_hip_yaw` … `right_ankle_lower` | `right_leg` | rs02/rs03 | `can1` | ✓ | ✓ | ✓ |
 | `13` | `neck_pitch` | `head` | rs05 | `can4` | ✓ | ✓ | ✓ |
-| `14` | `neck_yaw` | `head` | rs05 | `can4` | - | - | ✓ |
 | `15`–`18` | `left_shoulder_pitch`, `left_shoulder_roll`, `left_shoulder_yaw`, `left_elbow` | `left_arm` | rs02 | `can2` | - | ✓ | ✓ |
 | `20`–`23` | `right_shoulder_pitch`, `right_shoulder_roll`, `right_shoulder_yaw`, `right_elbow` | `right_arm` | rs02 | `can3` | - | ✓ | ✓ |
 

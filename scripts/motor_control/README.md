@@ -18,7 +18,7 @@ motor_control/
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
 | - | `--ids` | `legs` | Motors to move: IDs, groups or joint names; leg motors go to the policy default pose, head and arm motors to 0 rad |
-| - | `--allow-placeholder-limits` | Off | Allow head (`13`, `14`) and arm (`15`–`18`, `20`–`23`) motors, whose limits are PLACEHOLDERs |
+| - | `--allow-placeholder-limits` | Off | Allow head (`13`) and arm (`15`–`18`, `20`–`23`) motors, whose limits are PLACEHOLDERs |
 
 ```bash
 # Example

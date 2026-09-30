@@ -35,7 +35,7 @@ python3 scripts/calibration/motor_id/motor_id.py find --can can2
 python3 scripts/calibration/motor_id/motor_id.py set --current-id 1 --new-id 4
 python3 scripts/calibration/motor_id/motor_id.py set --can can1 --current-id 1 --new-id 8
 python3 scripts/calibration/motor_id/motor_id.py set --can can4 --current-id 1 --new-id 13
-python3 scripts/calibration/motor_id/motor_id.py set --can can4 --current-id 1 --new-id 14
+python3 scripts/calibration/motor_id/motor_id.py set --can can4 --current-id 1 --new-id 13
 python3 scripts/calibration/motor_id/motor_id.py set --can can2 --current-id 1 --new-id 15
 python3 scripts/calibration/motor_id/motor_id.py set --can can3 --current-id 1 --new-id 20
 ```
