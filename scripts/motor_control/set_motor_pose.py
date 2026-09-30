@@ -1,13 +1,28 @@
 #!/usr/bin/env python3
 import argparse
 import math
+import os
 import signal
 import sys
 import time
 
 import can
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from motor_selection import (
+    SELECTOR_HELP,
+    BusOpenError,
+    SelectionError,
+    attached_variant,
+    format_ids,
+    has_placeholder_limits,
+    open_bus,
+    resolve_motors,
+    variant_motors,
+    variant_summary,
+)
 from robonex_common.can import FeedbackHub, Motor
-from robonex_common.joints import ACTUATED_JOINTS, ALL_MOTORS, DEFAULT_JOINT_POS
+from robonex_common.joints import ALL_MOTORS, DEFAULT_JOINT_POS
 from robonex_common.motors import MOTOR_SPECS
 from robonex_common.protocol import DEFAULT_INTERFACE, HOST_ID, clamp
 from robonex_common.joints import channel_for_motor_id as channel_for_id
@@ -19,7 +34,6 @@ MOTORS = {
     }
     for joint in ALL_MOTORS
 }
-POLICY_MOTOR_IDS = tuple(joint.motor_id for joint in ACTUATED_JOINTS)
 
 MOVE_SPEED = 0.4
 MIN_MOVE_TIME = 3.0
@@ -42,27 +56,43 @@ def fmt(rad):
 def main():
     parser = argparse.ArgumentParser(
         description="Move motors slowly to target angles and hold until stopped.")
-    parser.add_argument("--ids", type=lambda v: int(v, 0), nargs="+", default=None,
-                        help="Motor IDs to move. Default: the 12 leg motors (policy default pose); "
-                             "other registered motors (13 head) go to 0 rad when listed")
+    parser.add_argument("--ids", nargs="+", default=None, metavar="SEL",
+                        help=f"Motors to move: {SELECTOR_HELP}. Default: legs (the 12 leg motors, policy "
+                             "default pose); head and arm motors go to 0 rad when listed")
+    parser.add_argument("--allow-placeholder-limits", action="store_true",
+                        help="Also move head/arm motors, whose joint limits are unmeasured PLACEHOLDERs")
     parser.set_defaults(
         interface=DEFAULT_INTERFACE,
         host_id=HOST_ID,
     )
     args = parser.parse_args()
 
-    active_motor_ids = sorted(set(args.ids)) if args.ids else list(POLICY_MOTOR_IDS)
-    unknown = [mid for mid in active_motor_ids if mid not in MOTORS]
-    if unknown:
-        print(f"Unregistered motor IDs: {unknown} (known: {sorted(MOTORS)})")
+    try:
+        variant = attached_variant()
+        selected = resolve_motors(args.ids or ["legs"], variant)
+    except SelectionError as error:
+        parser.error(str(error))
+    print(variant_summary(variant, variant_motors(variant)))
+    placeholder = [joint for joint in selected if has_placeholder_limits(joint)]
+    if placeholder and not args.allow_placeholder_limits:
+        names = ", ".join(f"{joint.motor_id} {joint.hardware_name}" for joint in placeholder)
+        print(f"Refusing IDs {format_ids(joint.motor_id for joint in placeholder)} ({names}): their joint limits "
+              "are PLACEHOLDERs (head +-30 deg, arms +-45 deg) until measured, so nothing checks that 0 rad "
+              "and the path to it are inside the real range. Check the zero and the free range by hand, then "
+              "add --allow-placeholder-limits.")
         return 1
+    active_motor_ids = [joint.motor_id for joint in selected]
 
     buses = {}
     motors = {}
     try:
         needed_channels = sorted({channel_for_id(mid) for mid in active_motor_ids})
         for channel in needed_channels:
-            buses[channel] = can.Bus(channel=channel, interface=args.interface)
+            try:
+                buses[channel] = open_bus(channel, args.interface)
+            except BusOpenError as error:
+                print(f"ERROR: {error}")
+                return 1
 
         for motor_id in active_motor_ids:
             cfg = MOTORS[motor_id]

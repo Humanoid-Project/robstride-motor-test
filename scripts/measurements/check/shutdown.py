@@ -1,11 +1,25 @@
 #!/usr/bin/env python3
 import argparse
+import os
 import sys
 import time
 
 import can
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from motor_selection import (
+    SELECTOR_HELP,
+    BusOpenError,
+    SelectionError,
+    attached_variant,
+    motors_by_channel,
+    open_bus,
+    resolve_motors,
+    variant_motors,
+    variant_summary,
+)
 from robonex_common.can import Motor, drain
-from robonex_common.joints import ALL_CHANNEL_MOTOR_IDS as CHANNEL_MOTOR_IDS, MOTOR_BY_ID as JOINT_BY_ID
+from robonex_common.joints import MOTOR_BY_ID as JOINT_BY_ID
 from robonex_common.motors import MOTOR_SPECS
 from robonex_common.protocol import DEFAULT_INTERFACE, HOST_ID
 
@@ -18,24 +32,31 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Brake and disable the selected motors before disconnecting power."
     )
-    parser.add_argument("--ids", type=int, nargs="+", default=None)
+    parser.add_argument("--ids", nargs="+", default=None, metavar="SEL",
+                        help=f"Motors to stop: {SELECTOR_HELP} (default: every motor of the attached robot)")
     parser.add_argument("--brake-time", type=float, default=0.3)
     parser.add_argument("--kd", type=float, default=3.0)
-    parser.set_defaults(
-        channels=list(CHANNEL_MOTOR_IDS), interface=DEFAULT_INTERFACE, host_id=HOST_ID
-    )
-    return parser.parse_args()
+    parser.set_defaults(interface=DEFAULT_INTERFACE, host_id=HOST_ID)
+    args = parser.parse_args()
+    try:
+        args.variant = attached_variant()
+        args.joints = resolve_motors(args.ids, args.variant)
+    except SelectionError as error:
+        parser.error(str(error))
+    return args
 
 
 def main():
     args = parse_args()
-    target_ids = args.ids if args.ids else sorted(
-        motor_id for channel in args.channels for motor_id in CHANNEL_MOTOR_IDS[channel]
-    )
+    print(variant_summary(args.variant, variant_motors(args.variant)))
+    target_ids = [joint.motor_id for joint in args.joints]
     buses = {}
     try:
-        for channel in args.channels:
-            buses[channel] = can.Bus(channel=channel, interface=args.interface)
+        for channel in motors_by_channel(args.joints):
+            try:
+                buses[channel] = open_bus(channel, args.interface)
+            except BusOpenError as error:
+                print(f"Skipping {error}")
         motors = {}
         for motor_id in target_ids:
             joint = JOINT_BY_ID.get(motor_id)

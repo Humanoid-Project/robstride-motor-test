@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import os
 import struct
 import sys
 import time
@@ -7,8 +8,17 @@ from pathlib import Path
 
 import can
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from motor_selection import (
+    SelectionError,
+    attached_variant,
+    format_ids,
+    ip_link_hint,
+    motors_by_channel,
+    variant_motors,
+    variant_summary,
+)
 from robonex_common.buses import bus_map
-from robonex_common.joints import ALL_CHANNEL_MOTOR_IDS
 from robonex_common.protocol import (
     COMM_DEVICE_ID,
     COMM_PARAMETER_READ,
@@ -126,12 +136,12 @@ def link_state(channel):
 def open_bus(channel):
     if link_state(channel) == "down":
         raise MotorIdError(
-            f"{channel} is DOWN. Bring the CAN interface up first."
+            f"{channel} is DOWN. Bring the CAN interface up first: {ip_link_hint(channel)}"
         )
     try:
         return can.Bus(channel=channel, interface=DEFAULT_INTERFACE)
     except (can.CanError, OSError) as exc:
-        raise MotorIdError(f"Failed to open {channel}: {exc}") from exc
+        raise MotorIdError(f"Failed to open {channel}: {exc} ({ip_link_hint(channel)})") from exc
 
 
 def format_found(result):
@@ -149,14 +159,28 @@ def scan_ids(bus, targets, timeout):
     return found
 
 
-def selected_channels(args):
-    return [args.can] if args.can else sorted(ALL_CHANNEL_MOTOR_IDS)
+def expected_ids_by_channel():
+    variant = attached_variant()
+    pool = variant_motors(variant)
+    print(variant_summary(variant, pool))
+    return {
+        channel: tuple(joint.motor_id for joint in joints)
+        for channel, joints in motors_by_channel(pool).items()
+    }
+
+
+def selected_channels(args, expected):
+    return [args.can] if args.can else sorted(expected)
 
 
 def run_check(args):
     failed = False
-    for channel in selected_channels(args):
-        targets = ALL_CHANNEL_MOTOR_IDS[channel]
+    expected = expected_ids_by_channel()
+    for channel in selected_channels(args, expected):
+        targets = expected.get(channel, ())
+        if not targets:
+            print(f"{channel}: no motors expected on this channel")
+            continue
         bus = None
         try:
             bus = open_bus(channel)
@@ -173,14 +197,14 @@ def run_check(args):
             failed = True
             print(f"{channel}: missing IDs {', '.join(map(str, missing))}")
         else:
-            print(f"{channel}: OK")
+            print(f"{channel}: OK (IDs {format_ids(targets)})")
     return 1 if failed else 0
 
 
 def run_find(args):
     found_any = False
     failed = False
-    for channel in selected_channels(args):
+    for channel in selected_channels(args, expected_ids_by_channel()):
         bus = None
         try:
             bus = open_bus(channel)
@@ -247,7 +271,7 @@ def run_set(args):
         return 0
     buses = {}
     try:
-        for channel in selected_channels(args):
+        for channel in selected_channels(args, expected_ids_by_channel()):
             buses[channel] = open_bus(channel)
         matches = []
         for channel, candidate_bus in buses.items():
@@ -288,12 +312,12 @@ def build_parser():
     commands = parser.add_subparsers(dest="command", required=True)
     can_option = argparse.ArgumentParser(add_help=False)
     can_option.add_argument("--can", choices=sorted(set(bus_map().values())), default=None,
-                            help="CAN channel to use (default: all)")
+                            help="CAN channel to use (default: every channel the attached robot's motors use)")
 
-    check = commands.add_parser("check", parents=[can_option], help="Check the ID layout of every mapped CAN channel")
+    check = commands.add_parser("check", parents=[can_option], help="Check that every motor of the attached robot answers on its channel")
     check.set_defaults(handler=run_check)
 
-    find = commands.add_parser("find", parents=[can_option], help="Search for motor IDs on the mapped CAN channels")
+    find = commands.add_parser("find", parents=[can_option], help="Search IDs 0-127 on the attached robot's CAN channels")
     find.add_argument("--motor-id", type=parse_id)
     find.set_defaults(handler=run_find)
 
@@ -309,7 +333,7 @@ def main():
     args = parser.parse_args()
     try:
         return args.handler(args)
-    except MotorIdError as exc:
+    except (MotorIdError, SelectionError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:

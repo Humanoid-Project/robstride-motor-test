@@ -1,13 +1,25 @@
 #!/usr/bin/env python3
 import argparse
 import math
+import os
 import struct
 import sys
 import time
 
 import can
 
-from robonex_common.joints import ALL_CHANNEL_MOTOR_IDS, ALL_MOTORS
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from motor_selection import (
+    SELECTOR_HELP,
+    BusOpenError,
+    SelectionError,
+    attached_variant,
+    open_bus,
+    resolve_motors,
+    variant_motors,
+    variant_summary,
+)
+from robonex_common.joints import ALL_MOTORS
 from robonex_common.protocol import (
     COMM_PARAMETER_READ,
     COMM_PARAMETER_WRITE,
@@ -110,31 +122,23 @@ def at_zero(position, pos_range):
     return abs(position) <= ZERO_TOLERANCE or abs(position - TWO_PI) <= ZERO_TOLERANCE
 
 
-def parse_ids(value):
-    ids = []
-    for item in value.split(","):
-        item = item.strip()
-        if not item:
-            continue
-        motor_id = int(item, 0)
-        if motor_id not in JOINT_MAP:
-            raise argparse.ArgumentTypeError(f"ID {motor_id} is not a RoboNex motor ({min(JOINT_MAP)}-{max(JOINT_MAP)})")
-        ids.append(motor_id)
-    if not ids:
-        raise argparse.ArgumentTypeError("give at least one motor ID")
-    return sorted(set(ids))
-
-
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Set the current position of the RoboNex motors as mechanical zero.")
-    parser.add_argument("--ids", type=parse_ids, default=None,
-                        help="Comma-separated motor IDs to zero, e.g. 4,10 (default: every motor)")
+    parser.add_argument("--ids", nargs="+", default=None, metavar="SEL",
+                        help=f"Motors to zero: {SELECTOR_HELP}, e.g. 4,10 or head "
+                             "(default: every motor of the attached robot)")
     parser.add_argument("--pos-range", type=int, choices=[0, 1], default=1,
                         help="Set power-on position wrapping: 0=0..2pi, 1=-pi..pi")
     parser.add_argument("--save", action="store_true",
                         help="Persist the zero position and position range to flash")
-    return parser.parse_args()
+    args = parser.parse_args()
+    try:
+        args.variant = attached_variant()
+        args.joints = resolve_motors(args.ids, args.variant)
+    except SelectionError as error:
+        parser.error(str(error))
+    return args
 
 
 def main():
@@ -143,16 +147,13 @@ def main():
         print("This command requires an interactive terminal for confirmation.")
         return 1
 
-    active_ids = args.ids or sorted(
-        motor_id
-        for channel in ALL_CHANNEL_MOTOR_IDS
-        for motor_id in ALL_CHANNEL_MOTOR_IDS[channel]
-    )
+    print(variant_summary(args.variant, variant_motors(args.variant)))
+    active_ids = [joint.motor_id for joint in args.joints]
 
     buses = {}
     try:
         for channel in sorted({channel_for_id(motor_id) for motor_id in active_ids}):
-            buses[channel] = can.Bus(channel=channel, interface=DEFAULT_INTERFACE)
+            buses[channel] = open_bus(channel, DEFAULT_INTERFACE)
 
         print("Scanning motors...")
         before = {}
@@ -215,6 +216,9 @@ def main():
 
         print(f"Result: {ok_count}/{len(before)} motors zeroed.")
         return 0 if ok_count == len(before) else 1
+    except BusOpenError as error:
+        print(f"ERROR: {error}")
+        return 1
     except KeyboardInterrupt:
         print("\nCancelled.")
         return 130

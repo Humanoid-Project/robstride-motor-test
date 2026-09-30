@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 import argparse
 import math
+import os
 import sys
 import time
 
 import can
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from motor_selection import BusOpenError, SelectionError, attached_variant, open_bus, variant_motors
 from robonex_common.can import FeedbackHub, Motor
-from robonex_common.joints import ALL_MOTORS as ACTUATED_JOINTS
 from robonex_common.protocol import DEFAULT_INTERFACE, HOST_ID
 
 REFRESH_DEFAULT_HZ = 10.0
@@ -15,7 +18,7 @@ STALE_DEFAULT_S = 0.3
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Passively display type 0x02 torque feedback from every RoboNex motor."
+        description="Passively display type 0x02 torque feedback from every motor of the attached RoboNex robot."
     )
     parser.add_argument("--refresh", type=float, default=REFRESH_DEFAULT_HZ,
                         help="Terminal refresh rate in Hz")
@@ -33,13 +36,13 @@ def validate_args(args):
     return problems
 
 
-def open_monitor(interface, host_id):
+def open_monitor(joints, interface, host_id):
     buses = {}
     motors = {}
     try:
-        for channel in sorted({joint.channel for joint in ACTUATED_JOINTS}):
-            buses[channel] = can.Bus(channel=channel, interface=interface)
-        for joint in ACTUATED_JOINTS:
+        for channel in sorted({joint.channel for joint in joints}):
+            buses[channel] = open_bus(channel, interface)
+        for joint in joints:
             motors[joint.motor_id] = Motor(
                 buses[joint.channel], joint.motor_id, joint.motor_model, host_id=host_id
             )
@@ -53,7 +56,7 @@ def open_monitor(interface, host_id):
     hubs = {
         channel: FeedbackHub(
             bus,
-            [motors[joint.motor_id] for joint in ACTUATED_JOINTS if joint.channel == channel],
+            [motors[joint.motor_id] for joint in joints if joint.channel == channel],
             host_id,
         )
         for channel, bus in buses.items()
@@ -79,7 +82,7 @@ def status_text(motor, now, stale_after):
     )
 
 
-def render(motors, started_at, stale_after, first_frame):
+def render(joints, motors, started_at, stale_after, first_frame):
     now = time.monotonic()
     lines = [
         "RoboNex torque monitor | passive type 0x02 receiver | Ctrl-C to exit",
@@ -89,7 +92,7 @@ def render(motors, started_at, stale_after, first_frame):
         f"{'torque N*m':>10} {'temp C':>7} {'age ms':>8}  status",
         "-" * 79,
     ]
-    for joint in ACTUATED_JOINTS:
+    for joint in joints:
         torque, temp, age, status = status_text(
             motors[joint.motor_id], now, stale_after
         )
@@ -109,7 +112,7 @@ def render(motors, started_at, stale_after, first_frame):
 def run(args):
     buses = {}
     try:
-        buses, motors, hubs = open_monitor(DEFAULT_INTERFACE, HOST_ID)
+        buses, motors, hubs = open_monitor(args.joints, DEFAULT_INTERFACE, HOST_ID)
         period = 1.0 / args.refresh
         started_at = time.monotonic()
         next_render = started_at
@@ -119,7 +122,7 @@ def run(args):
                 hub.pump()
             now = time.monotonic()
             if now >= next_render:
-                render(motors, started_at, args.stale_after, first_frame)
+                render(args.joints, motors, started_at, args.stale_after, first_frame)
                 first_frame = False
                 next_render = now + period
             sleep_time = min(0.002, max(0.0, next_render - time.monotonic()))
@@ -127,6 +130,9 @@ def run(args):
                 time.sleep(sleep_time)
     except KeyboardInterrupt:
         return 0
+    except BusOpenError as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 1
     except (OSError, can.CanError) as error:
         print(f"ERROR: CAN monitor failed: {error}", file=sys.stderr)
         return 1
@@ -151,6 +157,11 @@ def main():
         return 1
     if not sys.stdout.isatty():
         print("ERROR: Run this monitor in an interactive terminal.")
+        return 1
+    try:
+        args.joints = variant_motors(attached_variant())
+    except SelectionError as error:
+        print(f"ERROR: {error}")
         return 1
     return run(args)
 

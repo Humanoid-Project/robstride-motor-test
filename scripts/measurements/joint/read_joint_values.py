@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import argparse
+import csv
 import math
+import os
 import struct
 import sys
 import threading
@@ -8,7 +10,21 @@ import time
 
 import can
 
-from robonex_common.joints import ALL_CHANNEL_MOTOR_IDS as CHANNEL_MOTOR_IDS, ALL_MOTORS as ACTUATED_JOINTS
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from motor_selection import (
+    SELECTOR_HELP,
+    BusOpenError,
+    SelectionError,
+    attached_variant,
+    bus_map_summary,
+    channel_groups,
+    has_placeholder_limits,
+    motors_by_channel,
+    open_bus,
+    resolve_motors,
+    variant_motors,
+    variant_summary,
+)
 from robonex_common.protocol import (
     COMM_PARAMETER_READ,
     DEFAULT_INTERFACE,
@@ -20,7 +36,8 @@ from robonex_common.protocol import (
 
 ONESHOT_TIMEOUT = 0.1
 WATCH_TIMEOUT = 0.02
-JOINT_MAP = {joint.motor_id: joint.hardware_name for joint in ACTUATED_JOINTS}
+CSV_FIELDS = ("time_s", "unix_time", "channel", "motor_id", "joint", "position_rad")
+CLEAR_SCREEN = "\033[2J\033[3J\033[H"
 
 
 def read_mech_position(bus, host_id, motor_id, timeout=0.1):
@@ -47,136 +64,233 @@ def read_mech_position(bus, host_id, motor_id, timeout=0.1):
     return None
 
 
-def joint_name(motor_id):
-    return JOINT_MAP.get(motor_id, f"ID{motor_id}")
+class CsvLog:
+    def __init__(self, path):
+        self.handle = open(path, "w", newline="", encoding="utf-8")
+        self.writer = csv.writer(self.handle)
+        self.writer.writerow(CSV_FIELDS)
+        self.start = time.monotonic()
+        self.lock = threading.Lock()
+        self.rows = 0
+
+    def write(self, channel, joint, position):
+        now = time.monotonic()
+        value = "" if position is None else f"{position:.6f}"
+        with self.lock:
+            self.writer.writerow((f"{now - self.start:.6f}", f"{time.time():.6f}", channel,
+                                  joint.motor_id, joint.hardware_name, value))
+            self.rows += 1
+
+    def close(self):
+        with self.lock:
+            self.handle.close()
 
 
 def format_position(position):
     if position is None:
-        return "no response"
+        return "-"
     return f"{position:+8.4f} rad ({math.degrees(position):+8.2f} deg)"
 
 
-def read_channel(channel, interface, host_id, motor_ids, timeout):
-    print(f"[{channel}]")
-    print(f"  {'ID':>3}  {'joint':<18}  {'position':>26}")
-    print("  " + "-" * 50)
-    bus = can.Bus(channel=channel, interface=interface)
+def position_note(joint, position):
+    if position is None:
+        return "no response"
+    if abs(position) > math.pi:
+        return "outside +-180 deg (set zero_sta=1)"
+    if not joint.lower <= position <= joint.upper:
+        kind = "PLACEHOLDER limit" if has_placeholder_limits(joint) else "limit"
+        return (f"beyond {kind} [{math.degrees(joint.lower):+.0f}, "
+                f"{math.degrees(joint.upper):+.0f}] deg")
+    return ""
+
+
+def channel_lines(channel, joints, positions, error=None, rate=None):
+    title = f"[{channel}] {', '.join(channel_groups(channel)) or 'no mapped group'}"
+    if rate is not None:
+        title += f"   {rate:6.1f} Hz"
+    lines = [title]
+    if error is not None:
+        lines.append(f"  open failed: {error.reason}")
+        lines.append(f"  -> {error.hint}")
+    lines.append(f"  {'ID':>3}  {'joint':<20}  {'group':<9}  {'model':<5}  {'position':>28}  note")
+    lines.append("  " + "-" * 96)
+    for joint in joints:
+        if error is not None:
+            position, note = None, "channel not open"
+        else:
+            position = positions.get(joint.motor_id)
+            note = position_note(joint, position)
+        lines.append(f"  {joint.motor_id:>3}  {joint.hardware_name:<20}  {joint.group:<9}  "
+                     f"{joint.motor_model:<5}  {format_position(position):>28}  {note}".rstrip())
+    return lines
+
+
+def read_once(channels, interface, host_id, timeout, log=None):
+    missing = 0
+    for channel, joints in channels.items():
+        positions = {}
+        error = None
+        try:
+            bus = open_bus(channel, interface)
+        except BusOpenError as exc:
+            error = exc
+        else:
+            try:
+                for joint in joints:
+                    positions[joint.motor_id] = read_mech_position(bus, host_id, joint.motor_id, timeout)
+                    if log is not None:
+                        log.write(channel, joint, positions[joint.motor_id])
+            finally:
+                bus.shutdown()
+        missing += sum(1 for joint in joints if positions.get(joint.motor_id) is None)
+        print("\n".join(channel_lines(channel, joints, positions, error)))
+        print()
+    return missing
+
+
+def poll_worker(channel, joints, interface, host_id, timeout, shared, stop, log):
     try:
-        for motor_id in motor_ids:
-            position = read_mech_position(bus, host_id, motor_id, timeout=timeout)
-            print(f"  {motor_id:>3}  {joint_name(motor_id):<18}  "
-                  f"{format_position(position):>26}")
-    finally:
-        bus.shutdown()
-
-
-def read_all_channels(channels, interface, host_id, timeout):
-    for channel in channels:
-        read_channel(channel, interface, host_id, CHANNEL_MOTOR_IDS[channel], timeout)
-
-
-def poll_worker(channel, interface, host_id, timeout, state, rate, notes, lock, stop):
-    motor_ids = CHANNEL_MOTOR_IDS[channel]
-    try:
-        bus = can.Bus(channel=channel, interface=interface)
-    except OSError as e:
-        with lock:
-            notes.append(f"[{channel}] open failed: {e}  "
-                         f"(sudo ip link set {channel} up type can bitrate 1000000)")
+        bus = open_bus(channel, interface)
+    except BusOpenError as exc:
+        with shared["lock"]:
+            shared["errors"][channel] = exc
         return
 
-    t0, cnt = time.monotonic(), 0
+    t0, count = time.monotonic(), 0
     try:
         while not stop.is_set():
-            for motor_id in motor_ids:
-                position = read_mech_position(bus, host_id, motor_id, timeout=timeout)
-                with lock:
-                    state[motor_id] = position
-            cnt += 1
+            for joint in joints:
+                position = read_mech_position(bus, host_id, joint.motor_id, timeout=timeout)
+                if log is not None:
+                    log.write(channel, joint, position)
+                with shared["lock"]:
+                    shared["positions"][joint.motor_id] = position
+            count += 1
             now = time.monotonic()
             if now - t0 >= 0.5:
-                with lock:
-                    rate[channel] = cnt / (now - t0)
-                t0, cnt = now, 0
-    except can.CanError as e:
-        with lock:
-            notes.append(f"[{channel}] CAN error: {e}")
+                with shared["lock"]:
+                    shared["rates"][channel] = count / (now - t0)
+                t0, count = now, 0
+    except can.CanError as exc:
+        with shared["lock"]:
+            shared["notes"].append(f"[{channel}] CAN error: {exc}")
     finally:
         bus.shutdown()
 
 
-def watch_channels(channels, interface, host_id, timeout, interval):
-    state = {motor_id: None for ch in channels for motor_id in CHANNEL_MOTOR_IDS[ch]}
-    rate = {ch: 0.0 for ch in channels}
-    notes = []
-    lock = threading.Lock()
+def watch(channels, interface, host_id, timeout, hz, duration, header, log=None, out=sys.stdout):
+    shared = {"lock": threading.Lock(), "positions": {}, "rates": {}, "errors": {}, "notes": []}
     stop = threading.Event()
+    threads = [
+        threading.Thread(target=poll_worker,
+                         args=(channel, joints, interface, host_id, timeout, shared, stop, log),
+                         daemon=True)
+        for channel, joints in channels.items()
+    ]
+    for thread in threads:
+        thread.start()
 
-    threads = [threading.Thread(
-        target=poll_worker,
-        args=(ch, interface, host_id, timeout, state, rate, notes, lock, stop),
-        daemon=True) for ch in channels]
-    for t in threads:
-        t.start()
-
+    start = time.monotonic()
     try:
         while True:
-            with lock:
-                snapshot = dict(state)
-                rt = dict(rate)
-                current_notes = list(notes)
-
-            hz = "   ".join(f"{ch} {rt[ch]:6.1f} Hz" for ch in channels)
-            out = ["\033[2J\033[3J\033[H"]
-            out.append(f"joint monitor   {hz}   {time.strftime('%H:%M:%S')}"
-                       f"    (Ctrl-C to quit)\n")
-            for channel in channels:
-                out.append(f"[{channel}]")
-                out.append(f"  {'ID':>3}  {'joint':<18}  {'position':>26}")
-                out.append("  " + "-" * 50)
-                for motor_id in CHANNEL_MOTOR_IDS[channel]:
-                    out.append(f"  {motor_id:>3}  {joint_name(motor_id):<18}  "
-                               f"{format_position(snapshot[motor_id]):>26}")
-                out.append("")
-            out.extend(current_notes)
-
-            sys.stdout.write("\n".join(out) + "\n")
-            sys.stdout.flush()
-            time.sleep(interval)
+            with shared["lock"]:
+                positions = dict(shared["positions"])
+                rates = dict(shared["rates"])
+                errors = dict(shared["errors"])
+                notes = list(shared["notes"])
+            lines = [CLEAR_SCREEN + f"joint monitor   {time.strftime('%H:%M:%S')}   (Ctrl-C to quit)"]
+            lines.extend(header)
+            lines.append("")
+            for channel, joints in channels.items():
+                lines.extend(channel_lines(channel, joints, positions, errors.get(channel),
+                                           rates.get(channel, 0.0)))
+                lines.append("")
+            lines.extend(notes)
+            out.write("\n".join(lines) + "\n")
+            out.flush()
+            if duration and time.monotonic() - start >= duration:
+                return
+            time.sleep(1.0 / hz)
     finally:
         stop.set()
-        for t in threads:
-            t.join(timeout=2.0)
+        for thread in threads:
+            thread.join(timeout=2.0)
 
 
-def parse_args():
+def select_channels(args, variant):
+    joints = resolve_motors(args.ids, variant)
+    channels = motors_by_channel(joints)
+    if args.can is not None:
+        if args.can not in channels:
+            raise SelectionError(
+                f"no selected motor is on {args.can} (selected motors use {', '.join(channels)})"
+            )
+        channels = {args.can: channels[args.can]}
+    return channels
+
+
+def positive(value):
+    number = float(value)
+    if not math.isfinite(number) or number <= 0.0:
+        raise argparse.ArgumentTypeError("must be a positive number")
+    return number
+
+
+def non_negative(value):
+    number = float(value)
+    if not math.isfinite(number) or number < 0.0:
+        raise argparse.ArgumentTypeError("must be zero or a positive number")
+    return number
+
+
+def build_parser():
     parser = argparse.ArgumentParser(
-        description="Print mechanical joint angles for the selected motor IDs.")
-    parser.add_argument("--watch", action="store_true",
-                        help="Keep refreshing instead of printing once")
-    parser.set_defaults(
-        channels=list(CHANNEL_MOTOR_IDS), interface=DEFAULT_INTERFACE,
-        host_id=HOST_ID, timeout=None, interval=0.1,
-    )
-    return parser.parse_args()
+        description="Print the mechanical joint angle of RoboNex motors (read-only; never enables a motor).")
+    parser.add_argument("--ids", nargs="+", default=None, metavar="SEL",
+                        help=f"Motors to read: {SELECTOR_HELP} (default: every motor of the attached robot)")
+    parser.add_argument("--can", default=None, metavar="CH",
+                        help="Only read the selected motors on this CAN channel, e.g. can1")
+    parser.add_argument("--watch", action="store_true", help="Keep refreshing instead of printing once")
+    parser.add_argument("--hz", type=positive, default=10.0,
+                        help="Screen refresh rate in --watch mode (default 10); motors are polled as fast as the bus allows")
+    parser.add_argument("--duration", type=non_negative, default=0.0,
+                        help="Stop --watch after this many seconds (default 0 = until Ctrl-C)")
+    parser.add_argument("--csv", default=None, metavar="PATH",
+                        help="Write every reading to a new CSV file, one timestamped row each: " + ", ".join(CSV_FIELDS))
+    parser.set_defaults(interface=DEFAULT_INTERFACE, host_id=HOST_ID, timeout=None)
+    return parser
 
 
-def main():
-    args = parse_args()
+def main(argv=None):
+    parser = build_parser()
+    args = parser.parse_args(argv)
     timeout = args.timeout
     if timeout is None:
         timeout = WATCH_TIMEOUT if args.watch else ONESHOT_TIMEOUT
+    try:
+        variant = attached_variant()
+        channels = select_channels(args, variant)
+    except SelectionError as exc:
+        parser.error(str(exc))
 
+    header = [variant_summary(variant, variant_motors(variant)), bus_map_summary()]
+    log = CsvLog(args.csv) if args.csv else None
     try:
         if args.watch:
-            watch_channels(args.channels, args.interface, args.host_id,
-                           timeout, args.interval)
-        else:
-            read_all_channels(args.channels, args.interface, args.host_id, timeout)
+            watch(channels, args.interface, args.host_id, timeout, args.hz, args.duration, header, log)
+            return 0
+        print("\n".join(header) + "\n")
+        missing = read_once(channels, args.interface, args.host_id, timeout, log)
+        total = sum(len(joints) for joints in channels.values())
+        print(f"{total - missing}/{total} motors answered.")
+        return 1 if missing else 0
     except KeyboardInterrupt:
-        pass
+        return 0
+    finally:
+        if log is not None:
+            log.close()
+            print(f"CSV: {log.rows} rows -> {args.csv}")
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
