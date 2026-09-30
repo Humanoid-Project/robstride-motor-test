@@ -12,7 +12,7 @@ from tkinter import messagebox, ttk
 
 import can
 
-from robonex_common.joints import JOINT_BY_ID, JOINT_LIMITS_BY_ID, channel_for_motor_id
+from robonex_common.joints import MOTOR_BY_ID as JOINT_BY_ID, MOTOR_LIMITS_BY_ID as JOINT_LIMITS_BY_ID, channel_for_motor_id
 from robonex_common.motors import MOTOR_SPECS
 from robonex_common.protocol import (
     HOST_ID,
@@ -51,6 +51,7 @@ OPERATION_RUN_MODE = RUN_MODE_OPERATION
 
 RS03_SPEC = MOTOR_SPECS["rs03"]
 RS02_SPEC = MOTOR_SPECS["rs02"]
+RS05_SPEC = MOTOR_SPECS["rs05"]
 
 
 def default_model_for(motor_id):
@@ -914,7 +915,7 @@ class MotorPanel:
     def __init__(self, parent, title, spec, channel, interface, default_id, id_editable=True,
                  host_id=HOST_ID, available_specs=None, motor_id_validator=None):
         self.spec = spec
-        self.available_specs = {s.name: s for s in (available_specs or [RS02_SPEC, RS03_SPEC])}
+        self.available_specs = {s.name: s for s in (available_specs or [RS02_SPEC, RS03_SPEC, RS05_SPEC])}
         self.channel = channel
         self.interface = interface
         self.id_editable = id_editable
@@ -1313,7 +1314,7 @@ def parse_args(argv=None):
     args.geometry = "480x900" if len(args.motor_id) == 1 else "900x900"
     args.panels = []
     for index, (motor_id, model) in enumerate(zip(args.motor_id, args.model), start=1):
-        spec = RS02_SPEC if model == "rs02" else RS03_SPEC
+        spec = MOTOR_SPECS[model]
         args.panels.append(
             {
                 "title": f"Motor {index} ({spec.name}, ID {motor_id})",

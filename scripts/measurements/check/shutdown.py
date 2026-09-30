@@ -5,7 +5,7 @@ import time
 
 import can
 from robonex_common.can import Motor, drain
-from robonex_common.joints import CHANNEL_MOTOR_IDS, JOINT_BY_ID
+from robonex_common.joints import ALL_CHANNEL_MOTOR_IDS as CHANNEL_MOTOR_IDS, MOTOR_BY_ID as JOINT_BY_ID
 from robonex_common.motors import MOTOR_SPECS
 from robonex_common.protocol import DEFAULT_INTERFACE, HOST_ID
 

@@ -7,7 +7,7 @@ import time
 
 import can
 
-from robonex_common.joints import ACTUATED_JOINTS, CHANNEL_MOTOR_IDS
+from robonex_common.joints import ALL_CHANNEL_MOTOR_IDS, ALL_MOTORS
 from robonex_common.protocol import (
     COMM_PARAMETER_READ,
     COMM_PARAMETER_WRITE,
@@ -28,10 +28,7 @@ from robonex_common.joints import channel_for_motor_id as channel_for_id
 SAVE_PAYLOAD = bytes([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08])
 TWO_PI = 2.0 * math.pi
 ZERO_TOLERANCE = 0.05
-JOINT_MAP = {joint.motor_id: joint.hardware_name for joint in ACTUATED_JOINTS}
-
-
-
+JOINT_MAP = {joint.motor_id: joint.hardware_name for joint in ALL_MOTORS}
 
 def joint_name(motor_id):
     return JOINT_MAP.get(motor_id, f"ID{motor_id}")
@@ -121,7 +118,7 @@ def parse_ids(value):
             continue
         motor_id = int(item, 0)
         if motor_id not in JOINT_MAP:
-            raise argparse.ArgumentTypeError(f"ID {motor_id} is not a RoboNex motor (1-12)")
+            raise argparse.ArgumentTypeError(f"ID {motor_id} is not a RoboNex motor ({min(JOINT_MAP)}-{max(JOINT_MAP)})")
         ids.append(motor_id)
     if not ids:
         raise argparse.ArgumentTypeError("give at least one motor ID")
@@ -130,9 +127,9 @@ def parse_ids(value):
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Set the current position of motors 1-12 as mechanical zero.")
+        description="Set the current position of the RoboNex motors as mechanical zero.")
     parser.add_argument("--ids", type=parse_ids, default=None,
-                        help="Comma-separated motor IDs to zero, e.g. 4,10 (default: all 12)")
+                        help="Comma-separated motor IDs to zero, e.g. 4,10 (default: every motor)")
     parser.add_argument("--pos-range", type=int, choices=[0, 1], default=1,
                         help="Set power-on position wrapping: 0=0..2pi, 1=-pi..pi")
     parser.add_argument("--save", action="store_true",
@@ -148,8 +145,8 @@ def main():
 
     active_ids = args.ids or sorted(
         motor_id
-        for channel in CHANNEL_MOTOR_IDS
-        for motor_id in CHANNEL_MOTOR_IDS[channel]
+        for channel in ALL_CHANNEL_MOTOR_IDS
+        for motor_id in ALL_CHANNEL_MOTOR_IDS[channel]
     )
 
     buses = {}

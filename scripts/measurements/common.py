@@ -3,7 +3,7 @@ import signal
 import time
 
 from robonex_common.can import FeedbackHub, Motor
-from robonex_common.joints import ACTUATED_JOINTS, JOINT_BY_ID, JOINT_LIMITS_BY_ID
+from robonex_common.joints import ALL_MOTORS, MOTOR_BY_ID, MOTOR_LIMITS_BY_ID
 from robonex_common.joints import channel_for_motor_id as channel_for_id
 from robonex_common.limits import DEFAULT_LIMIT_MARGIN_RAD, exceeds_joint_limit, joint_limit_for
 from robonex_common.motors import MOTOR_SPECS, PEAK_TORQUE, RATED_TORQUE
@@ -19,15 +19,16 @@ from robonex_common.protocol import (
 )
 
 SPECS = MOTOR_SPECS
-JOINT_MAP = {joint.motor_id: joint.hardware_name for joint in ACTUATED_JOINTS}
-JOINT_LIMITS_RAD = JOINT_LIMITS_BY_ID
+JOINT_MAP = {joint.motor_id: joint.hardware_name for joint in ALL_MOTORS}
+JOINT_LIMITS_RAD = MOTOR_LIMITS_BY_ID
+MOTOR_MODEL = {joint.motor_id: joint.motor_model for joint in ALL_MOTORS}
 MECH_POS_INDEX = MECHANICAL_POSITION_INDEX
 FAULT_STA_INDEX = FAULT_STATUS_INDEX
 PLACEHOLDER_ARMATURE = {"rs02": 0.003, "rs03": 0.017}
 PLACEHOLDER_DAMPING = {"rs02": 0.2, "rs03": 0.2}
 
 def resolve_model(parser, args):
-    joint = JOINT_BY_ID.get(args.motor_id)
+    joint = MOTOR_BY_ID.get(args.motor_id)
     if joint is None:
         if args.model is None:
             parser.error(f"ID {args.motor_id} is not a RoboNex joint; pass --model explicitly")

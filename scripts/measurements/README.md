@@ -51,7 +51,7 @@ Armature is the rotational inertia that resists angular acceleration, measured i
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
 | - | `--motor-id` | `Required` | Select the motor |
-| - | `--model` | `Auto from ID` | `rs02` or `rs03`; must match the ID, required only for an ID outside 1-12 |
+| - | `--model` | `Auto from ID` | `rs02`, `rs03` or `rs05`; must match the ID, required only for an unregistered ID |
 | - | `--torques` | `Required` | Set test torques in N·m |
 | - | `--repeats` | `1` | Set repeats per torque |
 | - | `--ignore-joint-limit` | Off | Disable joint-limit checks |
@@ -80,7 +80,7 @@ Applies velocity damping, disables the selected motors, and verifies their opera
 
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
-| - | `--ids` | `1~12` | Select motors to disable |
+| - | `--ids` | All motors | Select motors to disable |
 | - | `--brake-time` | `0.3` | Set braking time in seconds |
 | - | `--kd` | `3.0` | Set braking damping gain |
 
@@ -100,7 +100,7 @@ Damping is the velocity-proportional resisting torque, measured in N·m/(rad/s).
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
 | - | `--motor-id` | `Required` | Select the motor |
-| - | `--model` | `Auto from ID` | `rs02` or `rs03`; must match the ID, required only for an ID outside 1-12 |
+| - | `--model` | `Auto from ID` | `rs02`, `rs03` or `rs05`; must match the ID, required only for an unregistered ID |
 | - | `--speeds` | `Required` | Set test speeds in rad/s |
 | - | `--repeats` | `1` | Set repeats per speed |
 | - | `--ignore-joint-limit` | Off | Disable joint-limit checks |
@@ -130,7 +130,7 @@ Friction is the breakaway torque required to start a stationary joint moving, me
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
 | - | `--motor-id` | `Required` | Select the motor |
-| - | `--model` | `Auto from ID` | `rs02` or `rs03`; must match the ID, required only for an ID outside 1-12 |
+| - | `--model` | `Auto from ID` | `rs02`, `rs03` or `rs05`; must match the ID, required only for an unregistered ID |
 | - | `--signs` | `1 -1` | Select positive (`1`) or negative (`-1`) motor torque directions |
 | - | `--repeats` | `1` | Set repeats per direction |
 | - | `--ignore-joint-limit` | Off | Disable joint-limit checks |
@@ -160,7 +160,7 @@ kp is the position gain the joint actually honours, as a fraction of the value c
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
 | - | `--motor-id` | `Required` | Select the motor |
-| - | `--model` | `Auto from ID` | `rs02` or `rs03`; must match the ID, required only for an ID outside 1-12 |
+| - | `--model` | `Auto from ID` | `rs02`, `rs03` or `rs05`; must match the ID, required only for an unregistered ID |
 | - | `--kp` | `Required` | Set the position gain to command |
 | - | `--offsets-deg` | `-6 -4 -2 2 4 6` | Set step offsets from the reference, in degrees |
 | - | `--repeats` | `2` | Set repeats per offset |
@@ -193,7 +193,7 @@ velocity target is stepped, so the joint shifts by kd * vel_target / kp without 
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
 | - | `--motor-id` | `Required` | Select the motor |
-| - | `--model` | `Auto from ID` | `rs02` or `rs03`; must match the ID, required only for an ID outside 1-12 |
+| - | `--model` | `Auto from ID` | `rs02`, `rs03` or `rs05`; must match the ID, required only for an unregistered ID |
 | - | `--kp` | `Required` | Set the position gain to hold with |
 | - | `--kd` | `Required` | Set the velocity gain to command |
 | - | `--vel-targets` | `-1.0 -0.5 0.5 1.0` | Set velocity targets in rad/s |
@@ -224,7 +224,7 @@ python3 scripts/measurements/kd/analyze_kd.py "scripts/measurements/kd/data/*.cs
 
 ## torque
 
-`torque.py` passively displays type `0x02` torque feedback from all 12 motors. It sends no CAN frames, so a motor controller such as `mujoco_to_real.py` must run separately. The displayed value is the motor controller's internal torque estimate, not an independent load-cell measurement.
+`torque.py` passively displays type `0x02` torque feedback from every registered motor. It sends no CAN frames, so a motor controller such as `mujoco_to_real.py` must run separately. The displayed value is the motor controller's internal torque estimate, not an independent load-cell measurement.
 
 ### `torque.py`
 
@@ -261,7 +261,7 @@ Tracks the minimum and maximum mechanical positions while each joint is moved by
 
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
-| - | `--motor-id`, `--motor-ids` | `1~12` | Select motors to scan |
+| - | `--motor-id`, `--motor-ids` | All motors | Select motors to scan |
 
 ```bash
 # Example
@@ -278,7 +278,7 @@ Enables stationary motors with velocity damping and records type `0x02` position
 
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
-| - | `--motor-id` | `1~12` | Select one or more motors to capture |
+| - | `--motor-id` | All motors | Select one or more motors to capture |
 | - | `--duration` | `60` | Set simultaneous capture time per active CAN channel |
 
 ```bash

@@ -12,18 +12,13 @@ import can
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from common import (
-    DEFAULT_INTERFACE, HOST_ID, SPECS,
+    DEFAULT_INTERFACE, HOST_ID, SPECS, MOTOR_MODEL,
     RUN_MODE_INDEX, RUN_MODE_OPERATION,
     FeedbackHub, Motor, channel_for_id, active_brake,
 )
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 FEEDBACK_SOURCE = "type_0x02"
-
-MOTOR_MODEL = {
-    1: "rs02", 2: "rs03", 3: "rs03", 4: "rs03", 5: "rs02", 6: "rs02",
-    7: "rs02", 8: "rs03", 9: "rs03", 10: "rs03", 11: "rs02", 12: "rs02",
-}
 
 DEFAULT_DURATION = 60.0
 DEFAULT_KD = 1.0
@@ -35,7 +30,7 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Capture type 0x02 CAN feedback from stationary motors.")
     parser.add_argument("--motor-id", dest="motor_id", nargs="+",
-                        type=lambda v: int(v, 0), default=list(range(1, 13)),
+                        type=lambda v: int(v, 0), default=sorted(MOTOR_MODEL),
                         help="One or more motor IDs to capture")
     parser.add_argument("--duration", type=float, default=DEFAULT_DURATION,
                         help="Capture time per channel in seconds")

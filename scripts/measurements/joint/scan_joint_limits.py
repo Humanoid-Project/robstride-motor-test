@@ -12,16 +12,11 @@ import can
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common import (
-    DEFAULT_INTERFACE, HOST_ID, JOINT_MAP, JOINT_LIMITS_RAD, MECH_POS_INDEX,
+    DEFAULT_INTERFACE, HOST_ID, JOINT_MAP, JOINT_LIMITS_RAD, MECH_POS_INDEX, MOTOR_MODEL,
     SPECS, Motor, channel_for_id,
 )
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "joint_limit")
-
-MOTOR_MODEL = {
-    1: "rs02", 2: "rs03", 3: "rs03", 4: "rs03", 5: "rs02", 6: "rs02",
-    7: "rs02", 8: "rs03", 9: "rs03", 10: "rs03", 11: "rs02", 12: "rs02",
-}
 
 DEFAULT_TIMEOUT = 0.1
 DEFAULT_INTERVAL = 0.1
@@ -31,7 +26,7 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Track joint minimum and maximum positions until Enter is pressed.")
     parser.add_argument("--motor-id", "--motor-ids", dest="motor_id", nargs="+",
-                        type=lambda v: int(v, 0), default=list(range(1, 13)),
+                        type=lambda v: int(v, 0), default=sorted(JOINT_MAP),
                         help="Motor IDs to scan")
     parser.set_defaults(
         interface=DEFAULT_INTERFACE, host_id=HOST_ID,

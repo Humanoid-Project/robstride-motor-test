@@ -17,7 +17,7 @@ motor_control/
 
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
-| - | - | - | Move all registered motors to the configured pose |
+| - | - | - | Move the 12 leg motors to the policy default pose (the head motor is not moved) |
 
 ```bash
 # Example

@@ -7,15 +7,10 @@ import time
 
 import can
 from robonex_common.can import FeedbackHub, Motor
-from robonex_common.joints import ACTUATED_JOINTS, DEFAULT_JOINT_POS
+from robonex_common.joints import ACTUATED_JOINTS, CHANNEL_MOTOR_IDS, DEFAULT_JOINT_POS
 from robonex_common.motors import MOTOR_SPECS
 from robonex_common.protocol import DEFAULT_INTERFACE, HOST_ID, clamp
 from robonex_common.joints import channel_for_motor_id as channel_for_id
-
-CHANNEL_ID_RANGES = {
-    "can0": range(1, 7),
-    "can1": range(7, 13),
-}
 
 MOTORS = {
     joint.motor_id: {
@@ -47,7 +42,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Move motors slowly to target angles and hold until stopped.")
     parser.set_defaults(
-        channels=list(CHANNEL_ID_RANGES),
+        channels=list(CHANNEL_MOTOR_IDS),
         interface=DEFAULT_INTERFACE,
         host_id=HOST_ID,
     )

@@ -19,12 +19,12 @@ calibration/
 
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
-| `check` | `--can` | `can0 can1` | Check standard motor IDs on one channel or both |
+| `check` | `--can` | All mapped | Check standard motor IDs on one channel or all |
 | `find` | `--motor-id` | `0~127` | Find a motor ID |
-| - | `--can` | `can0 can1` | Select the CAN channel to search |
+| - | `--can` | All mapped | Select the CAN channel to search |
 | `set` | `--current-id` | `Required` | Select the ID to change |
 | - | `--new-id` | `Required` | Set the new ID (`1~127`) |
-| - | `--can` | `can0 can1` | Select the CAN channel of the motor |
+| - | `--can` | All mapped | Select the CAN channel of the motor |
 
 ```bash
 # Example
@@ -33,6 +33,7 @@ python3 scripts/calibration/motor_id/motor_id.py find
 python3 scripts/calibration/motor_id/motor_id.py find --motor-id 4
 python3 scripts/calibration/motor_id/motor_id.py set --current-id 1 --new-id 4
 python3 scripts/calibration/motor_id/motor_id.py set --can can1 --current-id 1 --new-id 8
+python3 scripts/calibration/motor_id/motor_id.py set --can can4 --current-id 1 --new-id 13
 ```
 
 <br>
@@ -43,7 +44,7 @@ python3 scripts/calibration/motor_id/motor_id.py set --can can1 --current-id 1 -
 
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
-| - | `--ids` | All 12 | Comma-separated motor IDs to zero |
+| - | `--ids` | All motors | Comma-separated motor IDs to zero |
 | - | `--pos-range` | `1` | Set the power-on angle range (`0`: `0..2π`, `1`: `-π..π`) |
 | - | `--save` | Off | Persist the zero and angle range to flash |
 

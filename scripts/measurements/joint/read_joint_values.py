@@ -8,7 +8,7 @@ import time
 
 import can
 
-from robonex_common.joints import ACTUATED_JOINTS, CHANNEL_MOTOR_IDS
+from robonex_common.joints import ALL_CHANNEL_MOTOR_IDS as CHANNEL_MOTOR_IDS, ALL_MOTORS as ACTUATED_JOINTS
 from robonex_common.protocol import (
     COMM_PARAMETER_READ,
     DEFAULT_INTERFACE,

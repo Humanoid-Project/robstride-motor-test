@@ -25,6 +25,17 @@ sudo ip link set can0 txqueuelen 1000
 
 sudo ip link set can1 up type can bitrate 1000000
 sudo ip link set can1 txqueuelen 1000
+
+sudo ip link set can4 up type can bitrate 1000000
+sudo ip link set can4 txqueuelen 1000
+```
+
+Motor group to channel: `left_leg can0`, `right_leg can1`, `left_arm can2`, `right_arm can3`, `head can4` (`robonex-common` `DEFAULT_BUS_MAP`). Override per machine in `~/.config/robonex/bus_map.json`:
+
+```bash
+# Example
+mkdir -p ~/.config/robonex
+echo '{"head": "can0"}' > ~/.config/robonex/bus_map.json
 ```
 
 <br>

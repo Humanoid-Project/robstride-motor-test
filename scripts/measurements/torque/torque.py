@@ -6,7 +6,7 @@ import time
 
 import can
 from robonex_common.can import FeedbackHub, Motor
-from robonex_common.joints import ACTUATED_JOINTS
+from robonex_common.joints import ALL_MOTORS as ACTUATED_JOINTS
 from robonex_common.protocol import DEFAULT_INTERFACE, HOST_ID
 
 REFRESH_DEFAULT_HZ = 10.0
@@ -15,7 +15,7 @@ STALE_DEFAULT_S = 0.3
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Passively display type 0x02 torque feedback from all 12 RoboNex motors."
+        description="Passively display type 0x02 torque feedback from every RoboNex motor."
     )
     parser.add_argument("--refresh", type=float, default=REFRESH_DEFAULT_HZ,
                         help="Terminal refresh rate in Hz")

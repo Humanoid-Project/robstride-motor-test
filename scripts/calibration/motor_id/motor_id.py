@@ -7,7 +7,8 @@ from pathlib import Path
 
 import can
 
-from robonex_common.joints import CHANNEL_MOTOR_IDS
+from robonex_common.buses import bus_map
+from robonex_common.joints import ALL_CHANNEL_MOTOR_IDS
 from robonex_common.protocol import (
     COMM_DEVICE_ID,
     COMM_PARAMETER_READ,
@@ -149,13 +150,13 @@ def scan_ids(bus, targets, timeout):
 
 
 def selected_channels(args):
-    return [args.can] if args.can else list(CHANNEL_MOTOR_IDS)
+    return [args.can] if args.can else sorted(ALL_CHANNEL_MOTOR_IDS)
 
 
 def run_check(args):
     failed = False
     for channel in selected_channels(args):
-        targets = CHANNEL_MOTOR_IDS[channel]
+        targets = ALL_CHANNEL_MOTOR_IDS[channel]
         bus = None
         try:
             bus = open_bus(channel)
@@ -286,13 +287,13 @@ def build_parser():
     parser = argparse.ArgumentParser(description="Check, find, or change a Robstride motor CAN ID.")
     commands = parser.add_subparsers(dest="command", required=True)
     can_option = argparse.ArgumentParser(add_help=False)
-    can_option.add_argument("--can", choices=list(CHANNEL_MOTOR_IDS), default=None,
+    can_option.add_argument("--can", choices=sorted(set(bus_map().values())), default=None,
                             help="CAN channel to use (default: all)")
 
-    check = commands.add_parser("check", parents=[can_option], help="Check the standard can0/can1 ID layout")
+    check = commands.add_parser("check", parents=[can_option], help="Check the ID layout of every mapped CAN channel")
     check.set_defaults(handler=run_check)
 
-    find = commands.add_parser("find", parents=[can_option], help="Search for motor IDs on can0 and can1")
+    find = commands.add_parser("find", parents=[can_option], help="Search for motor IDs on the mapped CAN channels")
     find.add_argument("--motor-id", type=parse_id)
     find.set_defaults(handler=run_find)
 
