@@ -17,11 +17,12 @@ motor_control/
 
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
-| - | - | - | Move the 12 leg motors to the policy default pose (the head motor is not moved) |
+| - | `--ids` | `1`–`12` | Motor IDs to move: leg motors go to the policy default pose, other registered motors (`13` head) to 0 rad |
 
 ```bash
 # Example
 python3 scripts/motor_control/set_motor_pose.py
+python3 scripts/motor_control/set_motor_pose.py --ids 13
 ```
 
 <br>

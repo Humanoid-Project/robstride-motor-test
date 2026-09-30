@@ -7,18 +7,19 @@ import time
 
 import can
 from robonex_common.can import FeedbackHub, Motor
-from robonex_common.joints import ACTUATED_JOINTS, CHANNEL_MOTOR_IDS, DEFAULT_JOINT_POS
+from robonex_common.joints import ACTUATED_JOINTS, ALL_MOTORS, DEFAULT_JOINT_POS
 from robonex_common.motors import MOTOR_SPECS
 from robonex_common.protocol import DEFAULT_INTERFACE, HOST_ID, clamp
 from robonex_common.joints import channel_for_motor_id as channel_for_id
 
 MOTORS = {
     joint.motor_id: {
-        "target_rad": DEFAULT_JOINT_POS[joint.model_name],
+        "target_rad": DEFAULT_JOINT_POS.get(joint.model_name, 0.0),
         "model": joint.motor_model,
     }
-    for joint in ACTUATED_JOINTS
+    for joint in ALL_MOTORS
 }
+POLICY_MOTOR_IDS = tuple(joint.motor_id for joint in ACTUATED_JOINTS)
 
 MOVE_SPEED = 0.4
 MIN_MOVE_TIME = 3.0
@@ -29,7 +30,7 @@ OVERSPEED_STOP = 2.0
 TRACKING_STOP = math.radians(25.0)
 FEEDBACK_TIMEOUT = 0.3
 SPECS = MOTOR_SPECS
-JOINT_MAP = {joint.motor_id: joint.hardware_name for joint in ACTUATED_JOINTS}
+JOINT_MAP = {joint.motor_id: joint.hardware_name for joint in ALL_MOTORS}
 
 
 
@@ -41,16 +42,19 @@ def fmt(rad):
 def main():
     parser = argparse.ArgumentParser(
         description="Move motors slowly to target angles and hold until stopped.")
+    parser.add_argument("--ids", type=lambda v: int(v, 0), nargs="+", default=None,
+                        help="Motor IDs to move. Default: the 12 leg motors (policy default pose); "
+                             "other registered motors (13 head) go to 0 rad when listed")
     parser.set_defaults(
-        channels=list(CHANNEL_MOTOR_IDS),
         interface=DEFAULT_INTERFACE,
         host_id=HOST_ID,
     )
     args = parser.parse_args()
 
-    active_motor_ids = [mid for mid in MOTORS if channel_for_id(mid) in args.channels]
-    if not active_motor_ids:
-        print("No configured motor uses the selected channels.")
+    active_motor_ids = sorted(set(args.ids)) if args.ids else list(POLICY_MOTOR_IDS)
+    unknown = [mid for mid in active_motor_ids if mid not in MOTORS]
+    if unknown:
+        print(f"Unregistered motor IDs: {unknown} (known: {sorted(MOTORS)})")
         return 1
 
     buses = {}
