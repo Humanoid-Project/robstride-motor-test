@@ -13,9 +13,12 @@ import can
 import pytest
 
 from robonex_common.buses import bus_map
+from robonex_common.can import Motor
 from robonex_common.protocol import (
     COMM_DEVICE_ID,
+    COMM_FEEDBACK,
     COMM_PARAMETER_READ,
+    COMM_STOP,
     DEVICE_ID_DESTINATION,
     HOST_ID,
     MECHANICAL_POSITION_INDEX,
@@ -40,11 +43,13 @@ def load_script(relative):
 read_joint_values = load_script("measurements/joint/read_joint_values.py")
 motor_id_tool = load_script("calibration/motor_id/motor_id.py")
 set_motor_pose = load_script("motor_control/set_motor_pose.py")
+shutdown_tool = load_script("measurements/check/shutdown.py")
 
 
 class FakeMotors:
-    def __init__(self, channel, positions):
+    def __init__(self, channel, positions, modes=None):
         self.positions = positions
+        self.modes = modes if modes is not None else {motor_id: 0 for motor_id in positions}
         self.bus = can.Bus(interface="virtual", channel=channel)
         self.stop = threading.Event()
         self.thread = threading.Thread(target=self.run, daemon=True)
@@ -62,6 +67,11 @@ class FakeMotors:
                 self.bus.send(can.Message(
                     arbitration_id=build_arbitration_id(COMM_DEVICE_ID, target, DEVICE_ID_DESTINATION),
                     data=bytes([target] * 8), is_extended_id=True))
+            elif comm_type == COMM_STOP and self.modes.get(target) is not None:
+                self.bus.send(can.Message(
+                    arbitration_id=build_arbitration_id(
+                        COMM_FEEDBACK, (self.modes[target] << 14) | target, HOST_ID),
+                    data=bytes([0x80, 0x00, 0x80, 0x00, 0x80, 0x00, 0x01, 0x2C]), is_extended_id=True))
             elif comm_type == COMM_PARAMETER_READ:
                 payload = bytearray(8)
                 struct.pack_into("<H", payload, 0, MECHANICAL_POSITION_INDEX)
@@ -77,8 +87,8 @@ class FakeMotors:
 
 
 @contextlib.contextmanager
-def fake_motors(layout):
-    fakes = [FakeMotors(channel, positions) for channel, positions in layout.items()]
+def fake_motors(layout, modes=None):
+    fakes = [FakeMotors(channel, positions, modes) for channel, positions in layout.items()]
     try:
         yield
     finally:
@@ -290,3 +300,98 @@ def test_set_motor_pose_refuses_placeholder_limits(robot, monkeypatch, capsys):
     robot("ver2_edu")
     with pytest.raises(SystemExit):
         set_motor_pose.main()
+
+
+SHUTDOWN_LAYOUT = {"can0": {1: 0.0, 2: 0.0}, "can1": {7: 0.0}}
+
+
+def run_shutdown(monkeypatch, capsys, modes=None, missing_channel=None):
+    monkeypatch.setattr(shutdown_tool, "DEFAULT_INTERFACE", "virtual")
+    monkeypatch.setattr(sys, "argv", ["shutdown.py", "--ids", "1", "2", "7", "--brake-time", "0.05"])
+    with fake_motors(SHUTDOWN_LAYOUT, modes):
+        if missing_channel is not None:
+            real_bus = can.Bus
+
+            def bus(channel, interface):
+                if channel == missing_channel:
+                    raise OSError(19, "No such device")
+                return real_bus(channel=channel, interface=interface)
+
+            monkeypatch.setattr(motor_selection.can, "Bus", bus)
+        code = shutdown_tool.main()
+    out = capsys.readouterr().out
+    rows = {int(line.split()[0]): line for line in out.splitlines() if line[:3].strip().isdigit()}
+    return code, out, rows
+
+
+def test_shutdown_all_stopped(robot, monkeypatch, capsys):
+    robot("ver2_edu")
+    code, out, rows = run_shutdown(monkeypatch, capsys)
+    assert code == 0
+    assert sorted(rows) == [1, 2, 7]
+    assert all("stopped" in row for row in rows.values())
+    assert "3/3 motors confirmed stopped" in out and "Disable check passed." in out
+
+
+def test_shutdown_missing_channel(robot, monkeypatch, capsys):
+    robot("ver2_edu")
+    code, out, rows = run_shutdown(monkeypatch, capsys, missing_channel="can1")
+    assert code == 1
+    assert "channel_unavailable" in rows[7]
+    assert "stopped" in rows[1] and "stopped" in rows[2]
+    assert "Not confirmed stopped: IDs 7." in out
+    assert "Disable check passed" not in out
+
+
+def test_shutdown_silent_motor(robot, monkeypatch, capsys):
+    robot("ver2_edu")
+    code, out, rows = run_shutdown(monkeypatch, capsys, modes={1: 0, 2: None, 7: 0})
+    assert code == 1
+    assert "unconfirmed" in rows[2]
+    assert "Not confirmed stopped: IDs 2." in out
+
+
+def test_shutdown_active_motor(robot, monkeypatch, capsys):
+    robot("ver2_edu")
+    code, out, rows = run_shutdown(monkeypatch, capsys, modes={1: 0, 2: 0, 7: 2})
+    assert code == 1
+    assert "active" in rows[7] and "retry required" in rows[7]
+
+
+def test_shutdown_send_failure(robot, monkeypatch, capsys):
+    robot("ver2_edu")
+
+    class FailingMotor(Motor):
+        def stop(self, clear_fault=False):
+            if self.motor_id == 1:
+                raise can.CanError("Transmit buffer full")
+            super().stop(clear_fault)
+
+    monkeypatch.setattr(shutdown_tool, "Motor", FailingMotor)
+    code, out, rows = run_shutdown(monkeypatch, capsys)
+    assert code == 1
+    assert "send_failed" in rows[1] and "Transmit buffer full" in rows[1]
+    assert "stopped" in rows[2] and "stopped" in rows[7]
+
+
+def test_shutdown_interrupt_still_stops_remaining(robot, monkeypatch, capsys):
+    robot("ver2_edu")
+    stops = []
+
+    class InterruptedMotor(Motor):
+        def stop(self, clear_fault=False):
+            stops.append(self.motor_id)
+            super().stop(clear_fault)
+
+        def poll_feedback(self, timeout=0.05):
+            if self.motor_id == 2:
+                raise KeyboardInterrupt
+            return super().poll_feedback(timeout)
+
+    monkeypatch.setattr(shutdown_tool, "Motor", InterruptedMotor)
+    code, out, rows = run_shutdown(monkeypatch, capsys)
+    assert code == 1
+    assert stops == [1, 2, 2, 7]
+    assert "stopped" in rows[1]
+    assert "interrupted" in rows[2] and "interrupted" in rows[7]
+    assert "Not confirmed stopped: IDs 2, 7." in out

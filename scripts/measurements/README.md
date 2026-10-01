@@ -76,7 +76,7 @@ python3 scripts/measurements/armature/analyze_armature.py "scripts/measurements/
 
 ### `shutdown.py`
 
-Applies velocity damping, disables the selected motors, and verifies their operating mode before power-off.
+Applies velocity damping, disables the selected motors, and verifies their operating mode before power-off. Prints a per-channel table with one status per motor (`stopped`, `active`, `unconfirmed`, `send_failed`, `channel_unavailable`, `interrupted`); exits `1` unless every selected motor is `stopped`. Ctrl-C still sends a stop to every remaining motor on an open bus.
 
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
