@@ -34,6 +34,7 @@ from robonex_common.protocol import (
 
 QUERY_TIMEOUT = 0.25
 SCAN_TIMEOUT = 0.08
+SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 
 class MotorIdError(RuntimeError):
@@ -149,12 +150,42 @@ def format_found(result):
     return f"ID {result['motor_id']} ({detail})"
 
 
-def scan_ids(bus, targets, timeout):
+class ScanProgress:
+    def __init__(self, channel, last_id, out=None):
+        self.channel = channel
+        self.last_id = last_id
+        self.out = out or sys.stdout
+        self.live = self.out.isatty()
+        self.frame = 0
+
+    def probing(self, target_id):
+        if not self.live:
+            return
+        spin = SPINNER[self.frame % len(SPINNER)]
+        self.frame += 1
+        self.out.write(f"\r\033[K{spin} Searching {self.channel} ... ID {target_id}/{self.last_id}")
+        self.out.flush()
+
+    def found(self, result):
+        self.clear()
+        print(f"{self.channel}: {format_found(result)}", file=self.out, flush=True)
+
+    def clear(self):
+        if self.live:
+            self.out.write("\r\033[K")
+            self.out.flush()
+
+
+def scan_ids(bus, targets, timeout, progress=None):
     found = {}
     for target_id in targets:
+        if progress is not None:
+            progress.probing(target_id)
         result = probe_motor(bus, target_id, timeout)
         if result is not None:
             found[target_id] = result
+            if progress is not None:
+                progress.found(result)
         time.sleep(0.005)
     return found
 
@@ -216,11 +247,13 @@ def run_find(args):
                     print(f"{channel}: {format_found(result)}")
                     found_any = True
                 continue
-            found = scan_ids(bus, range(128), SCAN_TIMEOUT)
+            progress = ScanProgress(channel, 127)
+            try:
+                found = scan_ids(bus, range(128), SCAN_TIMEOUT, progress)
+            finally:
+                progress.clear()
             if found:
                 found_any = True
-                results = ", ".join(format_found(found[motor_id]) for motor_id in sorted(found))
-                print(f"{channel}: {results}")
             else:
                 print(f"{channel}: no motors found")
         except MotorIdError as exc:
