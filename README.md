@@ -26,7 +26,7 @@ pip install -r requirements.txt
 | `15`–`18` | `left_shoulder_pitch`, `left_shoulder_roll`, `left_shoulder_yaw`, `left_elbow` | `left_arm` | rs02 | `can2` | - | ✓ | ✓ |
 | `20`–`23` | `right_shoulder_pitch`, `right_shoulder_roll`, `right_shoulder_yaw`, `right_elbow` | `right_arm` | rs02 | `can3` | - | ✓ | ✓ |
 
-Head (±30°) and arm (±45°) joint limits are PLACEHOLDERs until measured. `--ids` also takes `legs`, `arms`, `all` and joint names; the default set is the attached robot's column, read from `~/.config/robonex/robot_model`:
+Head joint limit is ±73° and shoulder pitch (15, 20) ±100° (2026-10-01); the other arm (±45°) joint limits are PLACEHOLDERs until measured. `--ids` also takes `legs`, `arms`, `all` and joint names; the default set is the attached robot's column, read from `~/.config/robonex/robot_model`:
 
 ```bash
 # Example
