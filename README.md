@@ -72,3 +72,9 @@ echo '{"head": "can0"}' > ~/.config/robonex/bus_map.json
 | `calibration` | Motor mechanical zero and CAN ID setup | [📖](scripts/calibration/) |
 | `measurements` | Read joint values and measure RS02/RS03/RS05 physical parameters | [📖](scripts/measurements/) |
 | `motor_control` | Motor drive and hardware integration | [📖](scripts/motor_control/) |
+
+<br>
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE). Copyright 2026 RoboNex. See [NOTICE](NOTICE).
