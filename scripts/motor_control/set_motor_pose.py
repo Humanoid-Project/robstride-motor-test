@@ -53,12 +53,14 @@ def fmt(rad):
     return f"{rad:+8.4f} rad ({math.degrees(rad):+8.2f} deg)"
 
 
-def main():
+def main(zero_pose=False):
     parser = argparse.ArgumentParser(
-        description="Move motors slowly to target angles and hold until stopped.")
+        description="Move motors slowly to 0 rad and hold until stopped." if zero_pose
+        else "Move motors slowly to target angles and hold until stopped.")
     parser.add_argument("--ids", nargs="+", default=None, metavar="SEL",
-                        help=f"Motors to move: {SELECTOR_HELP}. Default: legs (the 12 leg motors, policy "
-                             "default pose); head and arm motors go to 0 rad when listed")
+                        help=f"Motors to move: {SELECTOR_HELP}. Default: legs (the 12 leg motors, "
+                             + ("0 rad)" if zero_pose else "policy default pose); head and arm motors go to 0 rad "
+                                "when listed"))
     parser.add_argument("--allow-placeholder-limits", action="store_true",
                         help="Also move head/arm motors, whose joint limits are unmeasured PLACEHOLDERs")
     parser.set_defaults(
@@ -100,7 +102,7 @@ def main():
             bus = buses[channel_for_id(motor_id)]
             motors[motor_id] = {
                 "motor": Motor(bus, motor_id, spec, host_id=args.host_id),
-                "target_cfg": cfg["target_rad"],
+                "target_cfg": 0.0 if zero_pose else cfg["target_rad"],
                 "target": None,
                 "start": None,
             }

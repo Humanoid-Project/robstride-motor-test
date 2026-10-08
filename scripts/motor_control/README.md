@@ -6,7 +6,8 @@
 motor_control/
 ├── README.md
 ├── motor_run_gui.py
-└── set_motor_pose.py
+├── set_motor_pose.py
+└── set_motor_zero_pose.py
 ```
 
 <br>
@@ -25,6 +26,23 @@ motor_control/
 python3 scripts/motor_control/set_motor_pose.py
 python3 scripts/motor_control/set_motor_pose.py --ids left_leg
 python3 scripts/motor_control/set_motor_pose.py --ids head --allow-placeholder-limits
+```
+
+<br>
+
+### `set_motor_zero_pose.py`
+
+Same as `set_motor_pose.py`, but every selected motor goes to 0 rad and holds there.
+
+| Command | Option | Default | Description |
+| --- | --- | --- | --- |
+| - | `--ids` | `legs` | Motors to move to 0 rad: IDs, groups or joint names |
+| - | `--allow-placeholder-limits` | Off | Allow head (`13`) and arm (`15`–`18`, `20`–`23`) motors, whose limits are PLACEHOLDERs |
+
+```bash
+# Example
+python3 scripts/motor_control/set_motor_zero_pose.py --ids 1,3,4,7,9,10
+python3 scripts/motor_control/set_motor_zero_pose.py --ids left_leg
 ```
 
 <br>

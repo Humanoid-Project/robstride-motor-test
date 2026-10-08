@@ -302,6 +302,41 @@ def test_set_motor_pose_refuses_placeholder_limits(robot, monkeypatch, capsys):
         set_motor_pose.main()
 
 
+def _pose_targets(monkeypatch, capsys, zero_pose):
+    class DummyBus:
+        def shutdown(self):
+            pass
+
+    class DummyMotor:
+        def __init__(self, bus, motor_id, spec, host_id=None):
+            self.motor_id = motor_id
+            self.spec = spec
+
+        def read_mech_position(self, timeout=0.3):
+            return 0.05
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr(set_motor_pose, "open_bus", lambda *_a, **_k: DummyBus())
+    monkeypatch.setattr(set_motor_pose, "Motor", DummyMotor)
+    monkeypatch.setattr(set_motor_pose, "FeedbackHub", lambda *_a, **_k: None)
+    monkeypatch.setattr(sys, "argv", ["set_motor_pose.py", "--ids", "4"])
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
+    assert set_motor_pose.main(zero_pose=zero_pose) == 1
+    return capsys.readouterr().out
+
+
+def test_set_motor_pose_zero_mode_targets_zero(robot, monkeypatch, capsys):
+    robot("ver2_edu")
+    out = _pose_targets(monkeypatch, capsys, zero_pose=True)
+    row = next(line for line in out.splitlines() if line.strip().startswith("4 "))
+    assert row.rstrip().endswith("+0.0000 rad (   +0.00 deg)")
+    out = _pose_targets(monkeypatch, capsys, zero_pose=False)
+    row = next(line for line in out.splitlines() if line.strip().startswith("4 "))
+    assert "-0.3299 rad" in row
+
+
 SHUTDOWN_LAYOUT = {"can0": {1: 0.0, 2: 0.0}, "can1": {7: 0.0}}
 
 
