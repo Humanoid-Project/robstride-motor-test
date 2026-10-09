@@ -9,3 +9,6 @@ __pycache__/
 # Measurement data
 scripts/measurements/**/data/
 scripts/measurements/joint/joint_limit/
+
+# Tests (kept locally, not tracked)
+tests/
