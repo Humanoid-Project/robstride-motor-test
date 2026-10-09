@@ -19,6 +19,7 @@ motor_control/
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
 | - | `--ids` | `legs` | Motors to move: IDs, groups or joint names; leg motors go to the policy default pose, head and arm motors to 0 rad |
+| - | `--target-deg` | - | Per-motor target override in degrees, `ID=DEG`, inside that joint's limits |
 | - | `--allow-placeholder-limits` | Off | Allow head (`13`) and arm (`15`–`18`, `20`–`23`) motors, whose limits are PLACEHOLDERs |
 
 ```bash
@@ -26,6 +27,7 @@ motor_control/
 python3 scripts/motor_control/set_motor_pose.py
 python3 scripts/motor_control/set_motor_pose.py --ids left_leg
 python3 scripts/motor_control/set_motor_pose.py --ids head --allow-placeholder-limits
+python3 scripts/motor_control/set_motor_pose.py --ids 13 --target-deg 13=-1.18 --allow-placeholder-limits
 ```
 
 <br>

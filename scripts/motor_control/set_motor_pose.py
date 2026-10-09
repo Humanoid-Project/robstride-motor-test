@@ -61,6 +61,9 @@ def main(zero_pose=False):
                         help=f"Motors to move: {SELECTOR_HELP}. Default: legs (the 12 leg motors, "
                              + ("0 rad)" if zero_pose else "policy default pose); head and arm motors go to 0 rad "
                                 "when listed"))
+    parser.add_argument("--target-deg", nargs="+", default=[], metavar="ID=DEG",
+                        help="Override the target of a selected motor in degrees, e.g. 13=-1.18 (must lie inside "
+                             "that joint's limits)")
     parser.add_argument("--allow-placeholder-limits", action="store_true",
                         help="Also move head/arm motors, whose joint limits are unmeasured PLACEHOLDERs")
     parser.set_defaults(
@@ -84,6 +87,22 @@ def main(zero_pose=False):
               "add --allow-placeholder-limits.")
         return 1
     active_motor_ids = [joint.motor_id for joint in selected]
+    overrides = {}
+    for item in args.target_deg:
+        try:
+            key, value = item.split("=", 1)
+            motor_id, degrees = int(key), float(value)
+        except ValueError:
+            parser.error(f"--target-deg expects ID=DEG, got {item!r}")
+        if not math.isfinite(degrees):
+            parser.error(f"--target-deg {item}: the angle is not finite")
+        joint = next((j for j in selected if j.motor_id == motor_id), None)
+        if joint is None:
+            parser.error(f"--target-deg {item}: ID {motor_id} is not among the selected motors")
+        if not joint.lower <= math.radians(degrees) <= joint.upper:
+            parser.error(f"--target-deg {item}: outside the joint limits "
+                         f"{math.degrees(joint.lower):+.1f}..{math.degrees(joint.upper):+.1f} deg")
+        overrides[motor_id] = math.radians(degrees)
 
     buses = {}
     motors = {}
@@ -102,7 +121,7 @@ def main(zero_pose=False):
             bus = buses[channel_for_id(motor_id)]
             motors[motor_id] = {
                 "motor": Motor(bus, motor_id, spec, host_id=args.host_id),
-                "target_cfg": 0.0 if zero_pose else cfg["target_rad"],
+                "target_cfg": overrides.get(motor_id, 0.0 if zero_pose else cfg["target_rad"]),
                 "target": None,
                 "start": None,
             }
