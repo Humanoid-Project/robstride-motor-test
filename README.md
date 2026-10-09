@@ -75,8 +75,8 @@ Brings up the leg and head channels named by the bus map (1 Mbps, txqueuelen 100
 
 ```bash
 # Example
-./scripts/can_up.sh
-./scripts/can_up.sh re
+./run/can_up.sh
+./run/can_up.sh re
 ```
 
 <br>
