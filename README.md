@@ -64,6 +64,21 @@ mkdir -p ~/.config/robonex
 echo '{"head": "can0"}' > ~/.config/robonex/bus_map.json
 ```
 
+### `can_up.sh`
+
+Brings up the leg and head channels named by the bus map (1 Mbps, txqueuelen 1000) and prints each channel's CAN state.
+
+| Command | Option | Default | Description |
+| --- | --- | --- | --- |
+| - | `re` | Off | Take every leg and head channel down first, then bring it up again |
+| - | `--dry-run` | Off | Print the commands without running them |
+
+```bash
+# Example
+./scripts/can_up.sh
+./scripts/can_up.sh re
+```
+
 <br>
 
 ## Scripts
