@@ -134,11 +134,14 @@ Friction is the breakaway torque required to start a stationary joint moving, me
 | - | `--model` | `Auto from ID` | `rs02`, `rs03` or `rs05`; must match the ID, required only for an unregistered ID |
 | - | `--signs` | `1 -1` | Select positive (`1`) or negative (`-1`) motor torque directions |
 | - | `--repeats` | `1` | Set repeats per direction |
+| - | `--max-torque` | `1.0` | Torque search upper bound in N·m; the time limit grows with it |
 | - | `--ignore-joint-limit` | Off | Disable joint-limit checks |
 
 ```bash
 # Example
 python3 scripts/measurements/friction/friction.py --motor-id 4 --model rs03
+
+python3 scripts/measurements/friction/friction.py --motor-id 11 --repeats 3 --max-torque 3
 ```
 
 <br>

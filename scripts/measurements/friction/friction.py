@@ -53,17 +53,24 @@ def parse_args():
     p.add_argument("--signs", type=int, nargs="+", choices=[1, -1], default=[1, -1],
                    help="Motor torque directions")
     p.add_argument("--repeats", type=positive_int, default=1, help="Repeats per direction")
+    p.add_argument("--max-torque", type=float, default=1.0,
+                   help="Torque search upper bound in N*m; a run ends without a breakaway if no movement by then")
     p.add_argument("--ignore-joint-limit", action="store_true",
                    help="Disable joint-limit checks for unloaded bench tests only")
     p.set_defaults(
         interface=DEFAULT_INTERFACE, host_id=HOST_ID,
         start_torque=0.02, step=0.02, probe_time=0.3,
-        move_threshold=0.03, max_torque=1.0, max_vel=3.0, max_time=30.0,
+        move_threshold=0.03, max_vel=3.0, max_time=30.0,
         settle_pos_tol=0.01, settle_time=0.3, settle_timeout=5.0,
         settle_max_vel=3.0, feedback_timeout=0.3, out=None,
         limit_margin=DEFAULT_LIMIT_MARGIN_RAD,
     )
-    return resolve_model(p, p.parse_args())
+    args = resolve_model(p, p.parse_args())
+    if args.max_torque <= args.start_torque:
+        p.error(f"--max-torque must be above the start torque {args.start_torque} N*m")
+    search_s = (math.ceil((args.max_torque - args.start_torque) / args.step) + 1) * args.probe_time
+    args.max_time = max(args.max_time, search_s + 5.0)
+    return args
 
 
 def confirm(args, model):
