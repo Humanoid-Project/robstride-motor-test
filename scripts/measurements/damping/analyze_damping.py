@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common import PLACEHOLDER_DAMPING
 
 SKIP_S = 0.1
+MAX_COND = 100.0
 
 
 def load_csv(path):
@@ -44,6 +45,26 @@ def r_squared(y, y_pred):
     if ss_tot == 0:
         return 1.0 if ss_res == 0 else float("nan")
     return 1.0 - ss_res / ss_tot
+
+
+def excitation_problem(x, cmd, max_cond=MAX_COND):
+    x = np.asarray(x, dtype=float)
+    cmd = np.asarray(cmd, dtype=float)
+    if np.all(np.isfinite(cmd)):
+        mags = np.unique(np.round(np.abs(cmd), 3))
+        if len(mags) < 2:
+            return f"every run uses the same command magnitude {mags[0]:g}"
+    sign_x = np.sign(x)
+    sign_x[sign_x == 0] = 1.0
+    design = np.column_stack([x, sign_x])
+    norms = np.linalg.norm(design, axis=0)
+    if not np.all(np.isfinite(design)) or np.any(norms == 0):
+        return "the measured regressor is zero or not finite"
+    cond = float(np.linalg.cond(design / norms))
+    if not np.isfinite(cond) or cond > max_cond:
+        return (f"the measured magnitudes are too close to separate the slope from the sign term "
+                f"(condition number {cond:.3g} > {max_cond:g})")
+    return None
 
 
 def analyze_file(path, skip_s):
@@ -81,6 +102,7 @@ def analyze_file(path, skip_s):
         "path": path,
         "model": meta.get("model"),
         "motor_id": meta.get("motor_id"),
+        "speed_cmd": speed_cmd,
         "omega": omega,
         "tau": tau,
         "n": int(mask.sum()),
@@ -113,6 +135,12 @@ def main():
 
     omega = np.array([r["omega"] for r in results])
     tau = np.array([r["tau"] for r in results])
+    problem = excitation_problem(omega, [r["speed_cmd"] for r in results])
+    if problem:
+        print(f"ERROR: The fit is not identifiable: {problem}.")
+        print("    Measure at least two different speed magnitudes.")
+        return 1
+
     sign_omega = np.sign(omega)
     sign_omega[sign_omega == 0] = 1.0
 
@@ -155,6 +183,8 @@ def main():
     elif n_pos == 0:
         print(f"WARNING: Only {n_neg} negative-speed runs were measured.")
 
+    if len(results) == 2:
+        print("WARNING: Two runs determine the fit exactly, so R² is 1 by construction; add a third run.")
     if not np.isfinite(r2) or r2 < 0.9:
         print("WARNING: Low R²; verify settling and possible nonlinear damping.")
 

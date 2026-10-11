@@ -94,12 +94,12 @@ def hold(motor, target, args, duration, collect, start=None):
     A step of 6 deg at kp=150 is 15.7 N.m on the first control frame, which snaps a free-hanging
     leg; ramping keeps the peak rate near `ramp_rate` and the torque near its steady value.
     """
-    end = time.monotonic() + duration
-    sample_from = end - args.sample_time
-    began = time.monotonic()
     if start is None:
         start = target
     ramp_s = max(abs(target - start) / args.ramp_rate, 1e-3)
+    began = time.monotonic()
+    end = began + ramp_s + duration
+    sample_from = end - args.sample_time
     last_ok = time.monotonic()
     rows = []
     while time.monotonic() < end:
@@ -142,7 +142,7 @@ def main():
         print(f"ERROR: {out} already exists.")
         return 1
 
-    bus = can.interface.Bus(channel=args.channel, interface="socketcan")
+    bus = can.interface.Bus(channel=args.channel, interface=args.interface)
     motor = Motor(bus, args.motor_id, SPECS[args.model], host_id=args.host_id)
     rows = []
     try:

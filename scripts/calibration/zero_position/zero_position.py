@@ -214,8 +214,8 @@ def main():
             result = "OK" if success else "WARNING - not at zero"
             print(f"ID {motor_id} ({channel}, {joint_name(motor_id)}): {result}, {fmt(after)}")
 
-        print(f"Result: {ok_count}/{len(before)} motors zeroed.")
-        return 0 if ok_count == len(before) else 1
+        print(f"Result: {ok_count}/{len(active_ids)} motors zeroed.")
+        return 0 if not missing and ok_count == len(before) else 1
     except BusOpenError as error:
         print(f"ERROR: {error}")
         return 1

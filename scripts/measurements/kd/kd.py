@@ -125,7 +125,7 @@ def main():
         print(f"ERROR: {out} already exists.")
         return 1
 
-    bus = can.interface.Bus(channel=args.channel, interface="socketcan")
+    bus = can.interface.Bus(channel=args.channel, interface=args.interface)
     motor = Motor(bus, args.motor_id, SPECS[args.model], host_id=args.host_id)
     rows = []
     try:

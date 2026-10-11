@@ -318,8 +318,7 @@ def capture_once(args, sign, run_index):
 
     breakaway_low = breakaway_high = breakaway_mid = None
     if stop_reason == "movement_detected":
-        breakaway_high = torque_at_stop
-        breakaway_low = torque_at_stop - args.sign * args.step
+        breakaway_low, breakaway_high = sorted((torque_at_stop - args.sign * args.step, torque_at_stop))
         breakaway_mid = (breakaway_low + breakaway_high) / 2.0
         print(f"Breakaway bracket: [{min(breakaway_low, breakaway_high):.3f}, "
               f"{max(breakaway_low, breakaway_high):.3f}] N*m")

@@ -63,14 +63,14 @@ def main():
         mids = [e["mid"] for e in entries]
         mean = sum(mids) / len(mids)
         std = (sum((m - mean) ** 2 for m in mids) / len(mids)) ** 0.5 if len(mids) > 1 else 0.0
-        lo = min(e["low"] for e in entries)
-        hi = max(e["high"] for e in entries)
+        lo = min(min(e["low"], e["high"]) for e in entries)
+        hi = max(max(e["low"], e["high"]) for e in entries)
         summary[(motor_id, model, sign)] = mean
         print(f"{motor_id:>8} {model:>6} {sign:>5} {len(entries):>3} {mean:>+12.4f} {std:>10.4f} "
               f"[{lo:>+.3f}, {hi:>+.3f}]")
         for e in entries:
             print(f"    - {os.path.basename(e['path'])}: mid={e['mid']:+.4f}  "
-                  f"bracket=[{e['low']:+.3f}, {e['high']:+.3f}]")
+                  f"bracket=[{min(e['low'], e['high']):+.3f}, {max(e['low'], e['high']):+.3f}]")
     print("=" * 72)
 
     motor_ids = sorted({k[0] for k in summary})

@@ -235,6 +235,7 @@ class MotorController(threading.Thread):
             "timestamp": 0.0,
             "feedback_timestamp": 0.0,
             "vbus_timestamp": 0.0,
+            "position_timestamp": 0.0,
             "position": 0.0,
             "velocity": 0.0,
             "acceleration": 0.0,
@@ -376,6 +377,7 @@ class MotorController(threading.Thread):
                 {
                     "timestamp": now,
                     "feedback_timestamp": now,
+                    "position_timestamp": now,
                     "position": feedback["position"],
                     "velocity": feedback["velocity"],
                     "acceleration": acceleration,
@@ -412,6 +414,7 @@ class MotorController(threading.Thread):
                 self.initial_position = position
                 self.state["initial_position"] = position
             self.state["timestamp"] = timestamp
+            self.state["position_timestamp"] = timestamp
             self.state["position"] = position
 
     def current_position(self):
@@ -791,7 +794,7 @@ class GraphCanvas(tk.Canvas):
 
     def add_sample(self, state):
         timestamp = state["timestamp"]
-        if timestamp <= 0.0 or timestamp == self.last_timestamp:
+        if timestamp <= 0.0 or state["position_timestamp"] <= 0.0 or timestamp == self.last_timestamp:
             return
         self.last_timestamp = timestamp
         self.samples.append(
@@ -942,7 +945,7 @@ class MotorPanel:
         self.status_var = tk.StringVar(value="Idle")
         self.active_id_var = tk.StringVar(value="-")
         self.feedback_var = tk.StringVar(value="none")
-        self.position_var = tk.StringVar(value="0.000 rad / 0.00 deg")
+        self.position_var = tk.StringVar(value="no data")
         self.home_var = tk.StringVar(value="unknown")
         self.velocity_read_var = tk.StringVar(value="0.000 rad/s")
         self.target_var = tk.StringVar(value="0.000 rad/s")
@@ -1190,7 +1193,10 @@ class MotorPanel:
             self.feedback_var.set(f"{state['feedback_count']} frames, {now - state['feedback_timestamp']:.2f}s ago")
         else:
             self.feedback_var.set("none")
-        self.position_var.set(f"{state['position']:+.4f} rad / {math.degrees(state['position']):+.2f} deg")
+        if state["position_timestamp"] > 0.0:
+            self.position_var.set(f"{state['position']:+.4f} rad / {math.degrees(state['position']):+.2f} deg")
+        else:
+            self.position_var.set("no data")
         if state["initial_position"] is None:
             self.home_var.set("unknown")
         else:
