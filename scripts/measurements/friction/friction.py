@@ -378,7 +378,6 @@ def run_search(motor, pos_start, args):
     misses = 0
     t0 = time.monotonic()
     current_torque = args.sign * args.start_torque
-    step = args.sign * args.step
     max_torque_signed = args.sign * args.max_torque
     step_deadline = t0 + args.probe_time
     stop_reason = "max_time"
@@ -406,12 +405,12 @@ def run_search(motor, pos_start, args):
                         stop_reason = "comm_mismatch"
                         break
                 step_start_index = len(rows)
-                current_torque += step
                 steps_taken += 1
+                current_torque = args.sign * round(args.start_torque + steps_taken * args.step, 9)
                 step_deadline = now + args.probe_time
                 print()
                 print(f"Torque: {current_torque:+.3f} N*m")
-                if abs(current_torque) > abs(max_torque_signed):
+                if abs(current_torque) > abs(max_torque_signed) + 1e-9:
                     stop_reason = "max_torque_no_movement"
                     break
             motor.control(pos=0.0, vel=0.0, kp=0.0, kd=0.0, torque=current_torque)
