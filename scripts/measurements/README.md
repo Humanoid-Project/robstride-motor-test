@@ -136,12 +136,19 @@ Friction is the breakaway torque required to start a stationary joint moving, me
 | - | `--repeats` | `1` | Set repeats per direction |
 | - | `--max-torque` | `1.0` | Torque search upper bound in N·m; the time limit grows with it |
 | - | `--ignore-joint-limit` | Off | Disable joint-limit checks |
+| - | `--pose` | `current` | Start pose before each search: `current`, `zero`, or `stand` (policy default pose); refused outside the joint limits or the 12° foot-roll clip |
+| - | `--hold-ids` | - | Motor IDs on the same channel held at the start pose with their deploy gains during the search |
 
 ```bash
 # Example
 python3 scripts/measurements/friction/friction.py --motor-id 4 --model rs03
 
 python3 scripts/measurements/friction/friction.py --motor-id 11 --repeats 3 --max-torque 3
+
+# Ankle at the standing pose, partner motor held
+python3 scripts/measurements/friction/friction.py --motor-id 5 --pose stand --hold-ids 6 --repeats 3
+
+python3 scripts/measurements/friction/friction.py --motor-id 11 --pose stand --hold-ids 12 --repeats 3 --max-torque 3
 ```
 
 <br>
