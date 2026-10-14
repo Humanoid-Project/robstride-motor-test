@@ -21,6 +21,7 @@ import can
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common import (
+    finite_float,
     shutdown_motor,
     resolve_model,
     HOST_ID, DEFAULT_INTERFACE, SPECS,
@@ -42,7 +43,7 @@ def parse_args():
     p.add_argument("--kp", type=float, required=True, help="Position gain to hold with")
     p.add_argument("--kd", type=float, required=True,
                    help="Velocity gain to command; the measurement checks whether it is honoured")
-    p.add_argument("--vel-targets", type=float, nargs="+", default=[-1.0, -0.5, 0.5, 1.0],
+    p.add_argument("--vel-targets", type=finite_float, nargs="+", default=[-1.0, -0.5, 0.5, 1.0],
                    help="Velocity targets in rad/s; the joint does not actually run at these")
     p.add_argument("--repeats", type=int, default=2)
     p.add_argument("--ignore-joint-limit", action="store_true")

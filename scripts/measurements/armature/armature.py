@@ -10,6 +10,7 @@ import can
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common import (
+    finite_float,
     shutdown_motor,
     resolve_model,
     HOST_ID, DEFAULT_INTERFACE, SPECS, RATED_TORQUE, PEAK_TORQUE,
@@ -43,7 +44,7 @@ def parse_args():
     p = argparse.ArgumentParser(description="Measure and analyze motor armature response.")
     p.add_argument("--motor-id", type=lambda v: int(v, 0), required=True)
     p.add_argument("--model", choices=list(SPECS.keys()), default=None)
-    p.add_argument("--torques", type=float, nargs="+", required=True,
+    p.add_argument("--torques", type=finite_float, nargs="+", required=True,
                    help="Signed feedforward torques in N*m")
     p.add_argument("--repeats", type=positive_int, default=1, help="Repeats per torque")
     p.add_argument("--ignore-joint-limit", action="store_true",

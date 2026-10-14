@@ -254,6 +254,8 @@ class MotorController(threading.Thread):
         }
 
     def set_target_velocity(self, value):
+        if not math.isfinite(float(value)):
+            return
         with self.lock:
             self.target_velocity = clamp(float(value), -self.args.max_speed, self.args.max_speed)
             self.state["target_velocity"] = self.target_velocity
@@ -261,22 +263,32 @@ class MotorController(threading.Thread):
                 self.position_hold_target = None
 
     def set_accel_limit(self, value):
+        if not math.isfinite(float(value)):
+            return
         with self.lock:
             self.accel_limit = clamp(float(value), 0.01, SAFE_MAX_ACCEL)
 
     def set_kd(self, value):
+        if not math.isfinite(float(value)):
+            return
         with self.lock:
             self.kd = clamp(float(value), 0.0, SAFE_MAX_KD)
 
     def set_return_kp(self, value):
+        if not math.isfinite(float(value)):
+            return
         with self.lock:
             self.return_kp = clamp(float(value), 0.0, SAFE_MAX_RETURN_KP)
 
     def set_return_kd(self, value):
+        if not math.isfinite(float(value)):
+            return
         with self.lock:
             self.return_kd = clamp(float(value), 0.0, SAFE_MAX_RETURN_KD)
 
     def set_move_speed(self, value):
+        if not math.isfinite(float(value)):
+            return
         with self.lock:
             self.move_speed = clamp(float(value), 0.01, SAFE_MAX_POSITION_SPEED)
 
@@ -309,6 +321,8 @@ class MotorController(threading.Thread):
 
     def request_move_to(self, target_position):
         with self.lock:
+            if not math.isfinite(float(target_position)):
+                return
             self.pending_move_to = clamp(float(target_position), self.spec.p_min, self.spec.p_max)
             self.target_velocity = 0.0
             self.command_velocity = 0.0
@@ -1106,7 +1120,10 @@ class MotorPanel:
             self.controller = None
 
     def set_velocity(self, value, send=True):
-        value = max(-SAFE_MAX_SPEED, min(SAFE_MAX_SPEED, float(value)))
+        value = float(value)
+        if not math.isfinite(value):
+            value = 0.0
+        value = max(-SAFE_MAX_SPEED, min(SAFE_MAX_SPEED, value))
         self.velocity_var.set(value)
         if send and self.controller is not None:
             self.controller.set_target_velocity(value)
@@ -1117,6 +1134,8 @@ class MotorPanel:
     def go_to_angle(self):
         try:
             angle_deg = float(self.target_angle_var.get())
+            if not math.isfinite(angle_deg):
+                raise ValueError(angle_deg)
         except ValueError:
             messagebox.showerror("Invalid angle", f"{self.spec.name}: target angle must be a number in degrees.")
             return

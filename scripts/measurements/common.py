@@ -1,3 +1,4 @@
+import argparse
 import math
 import signal
 import time
@@ -68,6 +69,13 @@ def shutdown_motor(motor, bus, steps=()):
             bus.shutdown()
         finally:
             signal.signal(signal.SIGINT, previous)
+
+
+def finite_float(text):
+    value = float(text)
+    if not math.isfinite(value):
+        raise argparse.ArgumentTypeError(f"must be finite ({text})")
+    return value
 
 
 def validate_args(args, model, checks):

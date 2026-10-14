@@ -33,6 +33,7 @@ import can
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common import (
+    finite_float,
     shutdown_motor,
     resolve_model,
     HOST_ID, DEFAULT_INTERFACE, SPECS,
@@ -53,7 +54,7 @@ def parse_args():
     p.add_argument("--model", choices=list(SPECS.keys()), default=None)
     p.add_argument("--kp", type=float, required=True,
                    help="Position gain to command; the measurement checks whether the joint honours it")
-    p.add_argument("--offsets-deg", type=float, nargs="+",
+    p.add_argument("--offsets-deg", type=finite_float, nargs="+",
                    default=[-6, -4, -2, 2, 4, 6],
                    help="Step offsets from the reference, in degrees")
     p.add_argument("--repeats", type=int, default=2)
