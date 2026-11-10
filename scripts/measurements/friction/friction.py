@@ -24,6 +24,7 @@ from common import (
     Motor, channel_for_id, decode_fault_bits, active_brake,
     validate_args, report_invalid_args,
     JOINT_LIMITS_RAD, DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_joint_limit, MOTOR_MODEL,
+    add_can_timeout_option, can_timeout_problem, arm_can_watchdog, install_stop_signals,
 )
 from robonex_common.can import FeedbackHub
 from robonex_common.foot_roll import foot_roll
@@ -76,6 +77,7 @@ def parse_args():
     p.add_argument("--hold-ids", type=lambda v: int(v, 0), nargs="+", default=[],
                    help="Motor IDs on the same CAN channel held at the start pose with their deploy gains during the "
                         "search (e.g. the other ankle motor of the same leg)")
+    add_can_timeout_option(p)
     p.set_defaults(
         interface=DEFAULT_INTERFACE, host_id=HOST_ID,
         start_torque=0.02, step=0.02, probe_time=0.3,
@@ -498,6 +500,9 @@ def capture_once(args, sign, run_index):
             bits = decode_fault_bits(fault_reg)
             print(f"Fault register: 0x{fault_reg:08X}" + (f" ({', '.join(bits)})" if bits else " (OK)"))
 
+        if not arm_can_watchdog(motor, args.can_timeout_ms):
+            return 1, None, "watchdog_not_armed"
+
         for m in [motor] + hold_motors:
             m.write_param_u8(RUN_MODE_INDEX, RUN_MODE_OPERATION)
             time.sleep(0.01)
@@ -657,8 +662,12 @@ def capture_once(args, sign, run_index):
 
 def main():
     args = parse_args()
+    install_stop_signals()
     args.channel = channel_for_id(args.motor_id)
     problems = []
+    problem = can_timeout_problem(args)
+    if problem:
+        problems.append(problem)
     for i in args.hold_ids:
         if i == args.motor_id:
             problems.append(f"--hold-ids must not contain the measured ID {i}")

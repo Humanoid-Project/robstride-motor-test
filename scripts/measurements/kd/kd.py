@@ -29,7 +29,11 @@ from common import (
     Motor, channel_for_id, active_brake,
     validate_args, report_invalid_args,
     DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_joint_limit,
+    add_can_timeout_option, can_timeout_problem, arm_can_watchdog, install_stop_signals,
 )
+from robonex_common.can import drain
+
+MODE_RUNNING = 2
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 ARG_CHECKS = [("kp", "positive"), ("kd", "positive"), ("settle-time", "positive"),
@@ -52,6 +56,7 @@ def parse_args():
                         "turns the capture into a command-to-response latency measurement")
     p.add_argument("--sample-all", action="store_true",
                    help="Record the whole hold, not just the settled window (needed for latency)")
+    add_can_timeout_option(p)
     p.set_defaults(interface=DEFAULT_INTERFACE, host_id=HOST_ID,
                    settle_time=1.0, sample_time=0.5,
                    feedback_timeout=0.3, limit_margin=DEFAULT_LIMIT_MARGIN_RAD, out=None)
@@ -98,11 +103,14 @@ def hold(motor, pos_target, vel_target, args, duration, collect):
             continue
         last_ok = now
         _, pos, vel, tq, temp, fault = fb
+        if motor.last_mode_status != MODE_RUNNING:
+            print()
+            return None, f"motor left run mode (mode {motor.last_mode_status})"
         if not args.ignore_joint_limit and exceeds_joint_limit(pos, args.motor_id, args.limit_margin):
             return None, "joint_limit"
         if collect and (args.sample_all or (now >= sample_from and alpha >= 1.0)):
             rows.append((round(now - began, 5), round(vt, 5), pos_target, vel_target,
-                         pos, vel, tq, temp))
+                         pos, vel, tq, temp, motor.last_mode_status))
         print(f"\r  vel_t={vel_target:+5.2f}  pos_err={math.degrees(pos_target-pos):+6.2f}deg  "
               f"vel={vel:+6.3f}  tq={tq:+6.2f} N*m  T={temp:.0f}C    ", end="", flush=True)
     print()
@@ -111,7 +119,11 @@ def hold(motor, pos_target, vel_target, args, duration, collect):
 
 def main():
     args = parse_args()
+    install_stop_signals()
     problems = validate_args(args, args.model, ARG_CHECKS)
+    problem = can_timeout_problem(args)
+    if problem:
+        problems.append(problem)
     if problems:
         report_invalid_args(problems)
         return 1
@@ -130,15 +142,36 @@ def main():
     motor = Motor(bus, args.motor_id, SPECS[args.model], host_id=args.host_id)
     rows = []
     try:
+        motor.stop()
+        time.sleep(0.02)
+        drain(bus)
+        if not arm_can_watchdog(motor, args.can_timeout_ms):
+            return 1
         motor.write_param_u8(RUN_MODE_INDEX, RUN_MODE_OPERATION)
+        time.sleep(0.01)
         motor.enable()
         time.sleep(0.2)
-        fb = motor.poll_feedback(timeout=1.0)
+        fb = None
+        while True:
+            latest = motor.poll_feedback(timeout=0.0 if fb else 1.0)
+            if latest is None:
+                break
+            fb = latest
         if fb is None:
             print("ERROR: no feedback from the motor.")
             return 1
         reference = fb[1]
         print(f"Reference position: {math.degrees(reference):+.2f} deg")
+        deadline = time.monotonic() + 0.3
+        while time.monotonic() < deadline:
+            motor.control(pos=reference, vel=0.0, kp=args.kp, kd=args.kd, torque=0.0)
+            if motor.poll_feedback(timeout=0.02) is not None and motor.last_mode_status == MODE_RUNNING:
+                break
+        if motor.last_mode_status != MODE_RUNNING:
+            print(f"ERROR: motor is not running after enable (mode {motor.last_mode_status}, "
+                  f"expected {MODE_RUNNING}); nothing was measured.")
+            return 1
+        print(f"Run mode confirmed (mode {MODE_RUNNING}).")
         if not args.ignore_joint_limit:
             lo, hi = joint_limit_for(args.motor_id, args.limit_margin)
             # Twice the predicted shift: the prediction assumes the commanded kd and kp are
@@ -179,8 +212,8 @@ def main():
                 if got is None:
                     print(f"  stopped: {why}")
                     raise SystemExit(1)
-                for t_s, vt_now, pt, v, p, vv, tq, temp in got:
-                    rows.append((rep, vt, t_s, vt_now, pt, p, vv, tq, temp))
+                for t_s, vt_now, pt, v, p, vv, tq, temp, mode in got:
+                    rows.append((rep, vt, t_s, vt_now, pt, p, vv, tq, temp, mode))
                 back, why = hold(motor, reference, 0.0, args, args.ramp_time + 0.4, False)
                 if back is None:
                     print(f"  stopped while returning: {why}")
@@ -197,7 +230,7 @@ def main():
             w.writerow(["# motor_id", args.motor_id, "model", args.model,
                         "commanded_kp", args.kp, "commanded_kd", args.kd])
             w.writerow(["repeat", "vel_target", "t_s", "vel_cmd_now", "pos_target",
-                        "pos_rad", "vel_rad_s", "torque_nm", "temp_c"])
+                        "pos_rad", "vel_rad_s", "torque_nm", "temp_c", "mode"])
             w.writerows(rows)
         print(f"\nWrote {len(rows)} samples to {out}")
         print(f"Analyze: python3 {os.path.join(os.path.dirname(os.path.abspath(__file__)), 'analyze_kd.py')} {out}")

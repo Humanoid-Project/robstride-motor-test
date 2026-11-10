@@ -18,6 +18,8 @@ from common import (
     Motor, channel_for_id, decode_fault_bits, active_brake,
     validate_args, report_invalid_args,
     DEFAULT_LIMIT_MARGIN_RAD, exceeds_joint_limit,
+    add_can_timeout_option, can_timeout_problem, arm_can_watchdog, install_stop_signals,
+    outside_position_domain, POSITION_DOMAIN_RAD, return_to_position,
 )
 
 ARG_CHECKS = [
@@ -31,6 +33,7 @@ ARG_CHECKS = [
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 ANALYZE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "analyze_armature.py")
 PAUSE_S = 1.0
+MAX_VEL_LIMIT = 10.0
 
 
 def positive_int(value):
@@ -49,9 +52,12 @@ def parse_args():
     p.add_argument("--repeats", type=positive_int, default=1, help="Repeats per torque")
     p.add_argument("--ignore-joint-limit", action="store_true",
                    help="Disable joint-limit checks for unloaded bench tests only")
+    p.add_argument("--max-vel", type=finite_float, default=5.0,
+                   help=f"Stop a run at this output speed in rad/s (at most {MAX_VEL_LIMIT})")
+    add_can_timeout_option(p)
     p.set_defaults(
         interface=DEFAULT_INTERFACE, host_id=HOST_ID,
-        max_vel=5.0, max_time=2.0, max_turns=3.0,
+        max_time=2.0, max_turns=0.75,
         settle_pos_tol=0.01, settle_time=0.3, settle_timeout=5.0,
         settle_max_vel=3.0, feedback_timeout=0.3,
         poll_timeout=0.03, rate=0.0, out=None,
@@ -155,6 +161,9 @@ def run_capture(motor, torque_cmd, pos_start, args):
             if abs(vel) >= args.max_vel:
                 stop_reason = "max_vel"
                 break
+            if outside_position_domain(pos):
+                stop_reason = "position_domain"
+                break
             if not args.ignore_joint_limit and exceeds_joint_limit(pos, args.motor_id, args.limit_margin):
                 print(f"\nJoint limit reached at {pos:+.4f} rad ({math.degrees(pos):+.1f} deg).")
                 stop_reason = "joint_limit"
@@ -187,6 +196,7 @@ def capture_once(args, torque, run_index):
     bus = can.Bus(channel=args.channel, interface=args.interface)
     motor = None
     rows, stop_reason, fault_count = [], "not_started", 0
+    pos_start = None
     try:
         motor = Motor(bus, args.motor_id, spec, host_id=args.host_id)
 
@@ -206,6 +216,9 @@ def capture_once(args, torque, run_index):
             print(f"Fault register: 0x{fault_reg:08X}" +
                   (f" ({', '.join(bits)})" if bits else " (OK)"))
 
+        if not arm_can_watchdog(motor, args.can_timeout_ms):
+            return 1, None, "watchdog_not_armed"
+
         motor.write_param_u8(RUN_MODE_INDEX, RUN_MODE_OPERATION)
         time.sleep(0.01)
         motor.enable()
@@ -222,6 +235,11 @@ def capture_once(args, torque, run_index):
                   f"({math.degrees(pos_start):+.1f} deg) is outside the joint limit.")
             motor.stop()
             return 1, None, "initial_joint_limit"
+        if abs(pos_start) + args.max_turns * 2.0 * math.pi >= POSITION_DOMAIN_RAD:
+            print(f"ERROR: Start {pos_start:+.3f} rad plus {args.max_turns} turns would leave the "
+                  f"+-{POSITION_DOMAIN_RAD:.2f} rad feedback range; turn the output nearer 0.")
+            motor.stop()
+            return 1, None, "position_domain"
         print(f"Settled at {pos_start:+.4f} rad. Applying torque...")
 
         rows, stop_reason, fault_count = run_capture(motor, args.torque, pos_start, args)
@@ -229,7 +247,15 @@ def capture_once(args, torque, run_index):
         print("\nInterrupted.")
         stop_reason = "keyboard_interrupt"
     finally:
-        shutdown_motor(motor, bus, (active_brake,))
+        steps = [active_brake]
+        if pos_start is not None and stop_reason in {"max_time", "max_vel", "max_turns"}:
+            def return_home(m):
+                print(f"Returning to the start position {pos_start:+.4f} rad...")
+                final = return_to_position(m, pos_start)
+                print("Return position: unknown (no feedback)" if final is None
+                      else f"Return position: {final:+.4f} rad ({math.degrees(final):+.2f} deg)")
+            steps.append(return_home)
+        shutdown_motor(motor, bus, tuple(steps))
 
     if not rows:
         print(f"ERROR: No samples recorded ({stop_reason}).")
@@ -271,7 +297,16 @@ def capture_once(args, torque, run_index):
 
 def main():
     args = parse_args()
+    install_stop_signals()
     args.channel = channel_for_id(args.motor_id)
+    problems = []
+    if not 0.0 < args.max_vel <= MAX_VEL_LIMIT:
+        problems.append(f"--max-vel must be in (0, {MAX_VEL_LIMIT}] ({args.max_vel})")
+    problem = can_timeout_problem(args)
+    if problem:
+        problems.append(problem)
+    if report_invalid_args(problems):
+        return 1
 
     for torque in args.torques:
         args.torque = torque

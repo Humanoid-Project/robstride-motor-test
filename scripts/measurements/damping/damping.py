@@ -24,6 +24,8 @@ from common import (
     Motor, channel_for_id, decode_fault_bits, active_brake,
     validate_args, report_invalid_args,
     JOINT_LIMITS_RAD, DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_joint_limit,
+    add_can_timeout_option, can_timeout_problem, arm_can_watchdog, install_stop_signals,
+    outside_position_domain, POSITION_DOMAIN_RAD as POSITION_DOMAIN_LIMIT,
 )
 
 ARG_CHECKS = [
@@ -35,6 +37,8 @@ ARG_CHECKS = [
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 ANALYZE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "analyze_damping.py")
 PAUSE_S = 1.0
+MAX_TURNS_LIMIT = 1.5
+MAX_HOLD_TIME_S = 5.0
 
 
 def positive_int(value):
@@ -53,9 +57,14 @@ def parse_args():
     p.add_argument("--repeats", type=positive_int, default=1, help="Repeats per speed")
     p.add_argument("--ignore-joint-limit", action="store_true",
                    help="Disable joint-limit checks for unloaded bench tests only")
+    p.add_argument("--max-turns", type=finite_float, default=0.5,
+                   help=f"Stop a run after this many output turns from its start (at most {MAX_TURNS_LIMIT})")
+    p.add_argument("--hold-time", type=finite_float, default=1.5,
+                   help=f"Recording time at constant speed in s (at most {MAX_HOLD_TIME_S})")
+    add_can_timeout_option(p)
     p.set_defaults(
         interface=DEFAULT_INTERFACE, host_id=HOST_ID,
-        kd=2.0, hold_time=1.5, ramp_time=0.5, max_turns=0.5,
+        kd=2.0, ramp_time=0.5,
         limit_margin=DEFAULT_LIMIT_MARGIN_RAD,
         feedback_timeout=0.3, out=None,
     )
@@ -74,7 +83,7 @@ def confirm(args, model):
         else:
             lo_m, hi_m = joint_limit_for(args.motor_id, args.limit_margin)
             print(f"Joint limit: {math.degrees(lo_m):+.1f} to {math.degrees(hi_m):+.1f} deg")
-            worst_travel = max(abs(speed) for speed in args.speeds) * (args.ramp_time + args.hold_time)
+            worst_travel = max(abs(speed) for speed in args.speeds) * (0.5 * args.ramp_time + args.hold_time)
             usable_range = hi_m - lo_m
             print(f"Maximum planned travel: {math.degrees(worst_travel):.1f} deg "
                   f"({100*worst_travel/usable_range:.0f}% of usable range)")
@@ -92,14 +101,17 @@ def confirm(args, model):
     return True
 
 
-def ramp_to_speed(motor, target_speed, kd, pos_ref, args, label):
+def ramp_to_speed(motor, target_speed, kd, pos_ref, args, label, start_speed=0.0):
 
-    deadline = time.monotonic() + args.ramp_time
+    start = time.monotonic()
+    deadline = start + args.ramp_time
     last_pos, last_vel = pos_ref, 0.0
     last_print = 0.0
-    last_ok = time.monotonic()
+    last_ok = start
     while time.monotonic() < deadline:
-        motor.control(pos=0.0, vel=target_speed, kp=0.0, kd=kd, torque=0.0)
+        fraction = min(1.0, (time.monotonic() - start) / args.ramp_time)
+        command = start_speed + (target_speed - start_speed) * fraction
+        motor.control(pos=0.0, vel=command, kp=0.0, kd=kd, torque=0.0)
         fb = motor.poll_feedback(timeout=0.05)
         now = time.monotonic()
         if fb is None:
@@ -111,6 +123,9 @@ def ramp_to_speed(motor, target_speed, kd, pos_ref, args, label):
             last_ok = now
             _, pos, vel, tq, temp, fault = fb
             last_pos, last_vel = pos, vel
+            if outside_position_domain(pos):
+                print()
+                return False, last_pos, last_vel, "position_domain"
             if pos_ref is not None and abs(pos - pos_ref) >= args.max_turns * 2.0 * math.pi:
                 print()
                 return False, last_pos, last_vel, "max_turns"
@@ -178,6 +193,9 @@ def run_hold(motor, target_speed, kd, pos_ref, args):
         last_ok = time.monotonic()
         t_recv, pos, vel, tq, temp, fault = fb
         rows.append((t_recv - t0, pos, vel, tq, temp, fault))
+        if outside_position_domain(pos):
+            stop_reason = "position_domain"
+            break
         if abs(pos - pos_ref) >= args.max_turns * 2.0 * math.pi:
             stop_reason = "max_turns"
             break
@@ -225,6 +243,9 @@ def capture_once(args, speed, run_index):
             bits = decode_fault_bits(fault_reg)
             print(f"Fault register: 0x{fault_reg:08X}" + (f" ({', '.join(bits)})" if bits else " (OK)"))
 
+        if not arm_can_watchdog(motor, args.can_timeout_ms):
+            return 1, None, "watchdog_not_armed"
+
         motor.write_param_u8(RUN_MODE_INDEX, RUN_MODE_OPERATION)
         time.sleep(0.01)
         motor.enable()
@@ -240,6 +261,10 @@ def capture_once(args, speed, run_index):
         if pos_ref is None:
             print("ERROR: No type 0x02 feedback; safety reference unavailable.")
             return 1, None, "no_realtime_feedback"
+        if abs(pos_ref) + args.max_turns * 2.0 * math.pi >= POSITION_DOMAIN_LIMIT:
+            print(f"ERROR: Start {pos_ref:+.3f} rad plus {args.max_turns} turns would leave the "
+                  f"+-{POSITION_DOMAIN_LIMIT:.2f} rad feedback range; turn the output nearer 0 or lower --max-turns.")
+            return 1, None, "position_domain"
 
         if not args.ignore_joint_limit:
             lo, hi = JOINT_LIMITS_RAD.get(args.motor_id, (None, None))
@@ -268,7 +293,7 @@ def capture_once(args, speed, run_index):
         rows, stop_reason = run_hold(motor, args.speed, args.kd, pos_ref, args)
 
         print("Decelerating...")
-        ramp_to_speed(motor, 0.0, args.kd, None, args, "ramp-down")
+        ramp_to_speed(motor, 0.0, args.kd, None, args, "ramp-down", start_speed=args.speed)
         print("Returning to zero...")
         final_pos = return_to_zero(motor)
         if final_pos is None:
@@ -319,7 +344,18 @@ def capture_once(args, speed, run_index):
 
 def main():
     args = parse_args()
+    install_stop_signals()
     args.channel = channel_for_id(args.motor_id)
+    problems = []
+    if not 0.0 < args.max_turns <= MAX_TURNS_LIMIT:
+        problems.append(f"--max-turns must be in (0, {MAX_TURNS_LIMIT}] ({args.max_turns})")
+    if not 0.0 < args.hold_time <= MAX_HOLD_TIME_S:
+        problems.append(f"--hold-time must be in (0, {MAX_HOLD_TIME_S}] ({args.hold_time})")
+    problem = can_timeout_problem(args)
+    if problem:
+        problems.append(problem)
+    if report_invalid_args(problems):
+        return 1
 
     for speed in args.speeds:
         args.speed = speed
