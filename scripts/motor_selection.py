@@ -4,7 +4,15 @@ from pathlib import Path
 import can
 
 from robonex_common.buses import DEFAULT_BUS_MAP, bus_map, bus_map_path
-from robonex_common.joints import ALL_MOTORS, GROUP_ID_RANGES, MOTOR_BY_ID, VARIANT_MOTOR_IDS, motors_for_variant
+from robonex_common.joints import (
+    ALL_MOTORS,
+    GROUP_ID_RANGES,
+    LEGACY_VARIANT_NAMES,
+    MOTOR_BY_ID,
+    VARIANT_MOTOR_IDS,
+    canonical_variant,
+    motors_for_variant,
+)
 
 ROBOT_IDENTITY_ENV = "ROBONEX_ROBOT_MODEL_FILE"
 ROBOT_IDENTITY_FILE = Path.home() / ".config" / "robonex" / "robot_model"
@@ -48,11 +56,11 @@ def attached_variant(path=None):
         return None
     if not value:
         return None
-    if value not in VARIANT_MOTOR_IDS:
-        raise SelectionError(
-            f"{path} names an unknown robot model {value!r} (known: {', '.join(sorted(VARIANT_MOTOR_IDS))})"
-        )
-    return value
+    if canonical_variant(value) not in VARIANT_MOTOR_IDS:
+        known = ", ".join(sorted(VARIANT_MOTOR_IDS))
+        legacy = ", ".join(f"{old} = {new}" for old, new in LEGACY_VARIANT_NAMES.items())
+        raise SelectionError(f"{path} names an unknown robot model {value!r} (known: {known}; legacy: {legacy})")
+    return canonical_variant(value)
 
 
 def variant_motors(variant):

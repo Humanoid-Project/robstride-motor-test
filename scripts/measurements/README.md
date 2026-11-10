@@ -270,7 +270,7 @@ Reads the type `0x11` mechanical position of each motor, grouped by CAN channel;
 # Example
 python3 scripts/measurements/joint/read_joint_values.py
 python3 scripts/measurements/joint/read_joint_values.py --ids head
-python3 scripts/measurements/joint/read_joint_values.py --ids left_leg 13
+python3 scripts/measurements/joint/read_joint_values.py --ids left_leg 26
 python3 scripts/measurements/joint/read_joint_values.py --ids left_knee_pitch,right_knee_pitch
 python3 scripts/measurements/joint/read_joint_values.py --can can1
 python3 scripts/measurements/joint/read_joint_values.py --watch

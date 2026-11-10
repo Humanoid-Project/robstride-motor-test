@@ -20,14 +20,14 @@ motor_control/
 | --- | --- | --- | --- |
 | - | `--ids` | `legs` | Motors to move: IDs, groups or joint names; leg motors go to the policy default pose, head and arm motors to 0 rad |
 | - | `--target-deg` | - | Per-motor target override in degrees, `ID=DEG`, inside that joint's limits |
-| - | `--allow-placeholder-limits` | Off | Allow head (`13`) and arm (`15`–`18`, `20`–`23`) motors, whose limits are PLACEHOLDERs |
+| - | `--allow-placeholder-limits` | Off | Allow head (`26`–`27`) and arm (`16`–`25`) motors, whose limits are PLACEHOLDERs |
 
 ```bash
 # Example
 python3 scripts/motor_control/set_motor_pose.py
 python3 scripts/motor_control/set_motor_pose.py --ids left_leg
 python3 scripts/motor_control/set_motor_pose.py --ids head --allow-placeholder-limits
-python3 scripts/motor_control/set_motor_pose.py --ids 13 --target-deg 13=-1.18 --allow-placeholder-limits
+python3 scripts/motor_control/set_motor_pose.py --ids 26 --target-deg 26=-1.18 --allow-placeholder-limits
 ```
 
 <br>
@@ -39,7 +39,7 @@ Same as `set_motor_pose.py`, but every selected motor goes to 0 rad and holds th
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
 | - | `--ids` | `legs` | Motors to move to 0 rad: IDs, groups or joint names |
-| - | `--allow-placeholder-limits` | Off | Allow head (`13`) and arm (`15`–`18`, `20`–`23`) motors, whose limits are PLACEHOLDERs |
+| - | `--allow-placeholder-limits` | Off | Allow head (`26`–`27`) and arm (`16`–`25`) motors, whose limits are PLACEHOLDERs |
 
 ```bash
 # Example
@@ -53,11 +53,11 @@ python3 scripts/motor_control/set_motor_zero_pose.py --ids left_leg
 
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
-| - | `--motor-id` | `5` | Select one motor or two motors on the same CAN channel (any registered ID `1`–`18`, `20`–`23`) |
+| - | `--motor-id` | `5` | Select one motor or two motors on the same CAN channel (any registered ID `1`–`12`, `16`–`27`) |
 
 ```bash
 # Example
 python3 scripts/motor_control/motor_run_gui.py --motor-id 4
 python3 scripts/motor_control/motor_run_gui.py --motor-id 5 6
-python3 scripts/motor_control/motor_run_gui.py --motor-id 15
+python3 scripts/motor_control/motor_run_gui.py --motor-id 16
 ```

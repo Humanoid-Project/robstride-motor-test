@@ -52,6 +52,8 @@ OPERATION_RUN_MODE = RUN_MODE_OPERATION
 RS03_SPEC = MOTOR_SPECS["rs03"]
 RS02_SPEC = MOTOR_SPECS["rs02"]
 RS05_SPEC = MOTOR_SPECS["rs05"]
+RS00_SPEC = MOTOR_SPECS["rs00"]
+RS10P_SPEC = MOTOR_SPECS["rs10p"]
 
 
 def default_model_for(motor_id):
@@ -932,7 +934,7 @@ class MotorPanel:
     def __init__(self, parent, title, spec, channel, interface, default_id, id_editable=True,
                  host_id=HOST_ID, available_specs=None, motor_id_validator=None):
         self.spec = spec
-        self.available_specs = {s.name: s for s in (available_specs or [RS02_SPEC, RS03_SPEC, RS05_SPEC])}
+        self.available_specs = {s.name: s for s in (available_specs or [RS00_SPEC, RS02_SPEC, RS03_SPEC, RS05_SPEC, RS10P_SPEC])}
         self.channel = channel
         self.interface = interface
         self.id_editable = id_editable

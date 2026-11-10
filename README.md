@@ -18,22 +18,21 @@ pip install -r requirements.txt
 
 ## Motors
 
-| ID | Joint | Group | Model | Default CAN | edu | pro | max |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `1`–`6` | `left_hip_yaw` … `left_ankle_lower` | `left_leg` | rs02/rs03 | `can0` | ✓ | ✓ | ✓ |
-| `7`–`12` | `right_hip_yaw` … `right_ankle_lower` | `right_leg` | rs02/rs03 | `can1` | ✓ | ✓ | ✓ |
-| `13` | `neck_pitch` | `head` | rs05 | `can4` | ✓ | ✓ | ✓ |
-| `15`–`18` | `left_shoulder_pitch`, `left_shoulder_roll`, `left_shoulder_yaw`, `left_elbow` | `left_arm` | rs02 | `can2` | - | ✓ | ✓ |
-| `20`–`23` | `right_shoulder_pitch`, `right_shoulder_roll`, `right_shoulder_yaw`, `right_elbow` | `right_arm` | rs02 | `can3` | - | ✓ | ✓ |
+| ID | Joint | Group | Model | Default CAN |
+| --- | --- | --- | --- | --- |
+| `1`–`6` | `left_hip_yaw` … `left_ankle_lower` | `left_leg` | rs02/rs03 | `can0` |
+| `7`–`12` | `right_hip_yaw` … `right_ankle_lower` | `right_leg` | rs02/rs03 | `can1` |
+| `13`–`15` | reserved | `waist` | - | - |
+| `16`–`20` | `left_shoulder_pitch`, `left_shoulder_roll`, `left_shoulder_yaw`, `left_elbow`, `left_wrist_yaw` | `left_arm` | rs02, rs10p, rs00, rs00, rs05 | `can2` |
+| `21`–`25` | `right_shoulder_pitch`, `right_shoulder_roll`, `right_shoulder_yaw`, `right_elbow`, `right_wrist_yaw` | `right_arm` | rs02, rs10p, rs00, rs00, rs05 | `can3` |
+| `26`–`27` | `neck_pitch`, `neck_yaw` (`28` reserved) | `head` | rs05 | `can4` |
 
-Pro and max are retired (2026-11-02): only the Ver.2 edu model remains in `robonex-description`; the pro / max columns stay as the motor-ID plan of the bench tools.
-
-Head joint limit is ±73° and shoulder pitch (15, 20) ±100° (2026-10-01); the other arm (±45°) joint limits are PLACEHOLDERs until measured. `--ids` also takes `legs`, `arms`, `all` and joint names; the default set is the attached robot's column, read from `~/.config/robonex/robot_model`:
+One robot model, `ver2` (all IDs above); an identity file that still says `ver2_edu` is read as `ver2`. Head pitch ±73°, shoulder pitch (16, 21) ±100°; the other arm and neck-yaw limits (±45° / ±30°) are PLACEHOLDERs until measured. `--ids` also takes `legs`, `arms`, `all` and joint names; the default set is the attached robot's, read from `~/.config/robonex/robot_model`:
 
 ```bash
 # Example
 mkdir -p ~/.config/robonex
-echo ver2_edu > ~/.config/robonex/robot_model
+echo ver2 > ~/.config/robonex/robot_model
 ```
 
 <br>

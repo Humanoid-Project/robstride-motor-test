@@ -62,7 +62,7 @@ def main(zero_pose=False):
                              + ("0 rad)" if zero_pose else "policy default pose); head and arm motors go to 0 rad "
                                 "when listed"))
     parser.add_argument("--target-deg", nargs="+", default=[], metavar="ID=DEG",
-                        help="Override the target of a selected motor in degrees, e.g. 13=-1.18 (must lie inside "
+                        help="Override the target of a selected motor in degrees, e.g. 26=-1.18 (must lie inside "
                              "that joint's limits)")
     parser.add_argument("--allow-placeholder-limits", action="store_true",
                         help="Also move head/arm motors, whose joint limits are unmeasured PLACEHOLDERs")
