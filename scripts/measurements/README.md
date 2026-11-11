@@ -445,15 +445,21 @@ python3 scripts/measurements/joint/read_joint_values.py \
 
 ### `scan_joint_limits.py`
 
-Tracks the minimum and maximum mechanical positions while each joint is moved by hand, then saves the results as CSV.
+Measures one motor at a time in ascending ID order while every other selected motor holds 0 at its deploy gains; Enter saves the CSV row, counts down, returns the motor to 0 and releases the next. `--passive` reads all selected motors at once without enabling any.
 
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
-| - | `--motor-id`, `--motor-ids` | All motors | Select motors to scan |
+| - | `--motor-id`, `--motor-ids` | `1`-`12` (`--passive`: all motors) | Select motors to scan |
+| - | `--passive` | Off | Read-only scan, no motor enabled |
+| - | `--can-timeout-ms` | `1000` | Motor CAN watchdog for this run (`0` disables, max `5000`) |
 
 ```bash
 # Example
-python3 scripts/measurements/joint/scan_joint_limits.py --motor-id 5 6
+python3 scripts/measurements/joint/scan_joint_limits.py
+
+python3 scripts/measurements/joint/scan_joint_limits.py --motor-id 1 2 3
+
+python3 scripts/measurements/joint/scan_joint_limits.py --passive --motor-id 5 6
 ```
 
 <br>
