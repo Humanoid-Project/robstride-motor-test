@@ -67,17 +67,28 @@ echo '{"head": "can0"}' > ~/.config/robonex/bus_map.json
 
 ### `can_up.sh`
 
-Brings up the leg and head channels named by the bus map (1 Mbps, txqueuelen 1000) and prints each channel's CAN state.
+Brings up every bus-map channel that exists on this machine (1 Mbps, txqueuelen 1000), skips missing ones, and prints each channel's groups and CAN state. Groups: `left_leg`, `right_leg`, `head` and any group named in the bus map file.
 
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
-| - | `re` | Off | Take every leg and head channel down first, then bring it up again |
+| - | `channel` | Bus map | Bring up only these channels; a missing one is an error |
+| - | `re` | Off | Take each selected channel down first, then bring it up again |
+| - | `--all` | Off | Also select `left_arm` and `right_arm` |
+| - | `--strict` | Off | Exit before any change unless every selected channel exists |
 | - | `--dry-run` | Off | Print the commands without running them |
 
 ```bash
 # Example
 ./run/can_up.sh
 ./run/can_up.sh re
+
+# One USB-CAN adapter
+./run/can_up.sh can0
+./run/can_up.sh re can0
+
+# Assembled robot
+./run/can_up.sh --strict
+./run/can_up.sh --all --dry-run
 ```
 
 <br>
