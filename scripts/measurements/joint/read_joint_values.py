@@ -18,7 +18,6 @@ from motor_selection import (
     attached_variant,
     bus_map_summary,
     channel_groups,
-    has_placeholder_limits,
     motors_by_channel,
     open_bus,
     resolve_motors,
@@ -92,18 +91,6 @@ def format_position(position):
     return f"{position:+8.4f} rad ({math.degrees(position):+8.2f} deg)"
 
 
-def position_note(joint, position):
-    if position is None:
-        return "no response"
-    if abs(position) > math.pi:
-        return "outside +-180 deg (set zero_sta=1)"
-    if not joint.lower <= position <= joint.upper:
-        kind = "PLACEHOLDER limit" if has_placeholder_limits(joint) else "limit"
-        return (f"beyond {kind} [{math.degrees(joint.lower):+.0f}, "
-                f"{math.degrees(joint.upper):+.0f}] deg")
-    return ""
-
-
 def channel_lines(channel, joints, positions, error=None, rate=None):
     title = f"[{channel}] {', '.join(channel_groups(channel)) or 'no mapped group'}"
     if rate is not None:
@@ -112,16 +99,12 @@ def channel_lines(channel, joints, positions, error=None, rate=None):
     if error is not None:
         lines.append(f"  open failed: {error.reason}")
         lines.append(f"  -> {error.hint}")
-    lines.append(f"  {'ID':>3}  {'joint':<20}  {'group':<9}  {'model':<5}  {'position':>28}  note")
-    lines.append("  " + "-" * 96)
+    lines.append(f"  {'ID':>3}  {'joint':<20}  {'group':<9}  {'model':<5}  {'position':>28}")
+    lines.append("  " + "-" * 73)
     for joint in joints:
-        if error is not None:
-            position, note = None, "channel not open"
-        else:
-            position = positions.get(joint.motor_id)
-            note = position_note(joint, position)
+        position = None if error is not None else positions.get(joint.motor_id)
         lines.append(f"  {joint.motor_id:>3}  {joint.hardware_name:<20}  {joint.group:<9}  "
-                     f"{joint.motor_model:<5}  {format_position(position):>28}  {note}".rstrip())
+                     f"{joint.motor_model:<5}  {format_position(position):>28}")
     return lines
 
 
