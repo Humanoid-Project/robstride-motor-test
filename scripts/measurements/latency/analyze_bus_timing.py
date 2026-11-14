@@ -49,11 +49,19 @@ def stuff_count(bits):
     return count
 
 
-def frame_bits(arbitration_id, data):
+def frame_bits(arbitration_id, data, extended=True, remote=False, dlc=None):
     data = bytes(data)
-    head = ([0] + bits_of((arbitration_id >> 18) & 0x7FF, 11) + [1, 1] + bits_of(arbitration_id & 0x3FFFF, 18)
-            + [0, 0, 0] + bits_of(len(data), 4))
-    for byte in data:
+    dlc = len(data) if dlc is None else dlc
+    if not 0 <= dlc <= 8 or not 0 <= arbitration_id < (1 << (29 if extended else 11)):
+        raise ValueError("expected a Classical CAN frame")
+    if not remote and len(data) != dlc:
+        raise ValueError("CAN payload length differs from DLC")
+    if extended:
+        head = ([0] + bits_of(arbitration_id >> 18, 11) + [1, 1] + bits_of(arbitration_id & 0x3FFFF, 18)
+                + [int(remote), 0, 0] + bits_of(dlc, 4))
+    else:
+        head = [0] + bits_of(arbitration_id, 11) + [int(remote), 0, 0] + bits_of(dlc, 4)
+    for byte in (() if remote else data):
         head += bits_of(byte, 8)
     body = head + bits_of(crc15(head), 15)
     return len(body) + stuff_count(body) + TAIL_BITS
@@ -132,8 +140,10 @@ def summarize(paths, clock="auto", bitrate=DEFAULT_BITRATE):
         for row in loaded:
             row["file"] = index
         rows.extend(loaded)
-    if not rows:
+    if not rows and not any("load_start_mono" in meta for meta in metas):
         raise SystemExit("no exchanges in these files")
+    if bitrate <= 0:
+        raise SystemExit("--bitrate must be positive")
     name, tx_key, rx_key = pick_clock(rows, clock)
     bit_time = 1.0 / bitrate
 
@@ -159,7 +169,6 @@ def summarize(paths, clock="auto", bitrate=DEFAULT_BITRATE):
     slots = {}
     cycle_times = {}
     host_times = {}
-    busy = {}
     for members in cycles.values():
         pattern = members[0]["pattern"]
         first = members[0]
@@ -177,24 +186,30 @@ def summarize(paths, clock="auto", bitrate=DEFAULT_BITRATE):
             span = max(r[rx_key] for r in members) - first[tx_key]
             cycle_times.setdefault(pattern, []).append(span)
             host_times.setdefault(pattern, []).append(max(r["t_rx_mono"] for r in members) - first["t_send_mono"])
-            wire = sum(r["tx_bits"] + r["rx_bits"] for r in members) * bit_time
-            busy.setdefault(pattern, []).append(wire / span if span > 0 else math.nan)
     per_slot = {slot: {"motors": sorted(entry["motors"]), "tx_offset": distribution(entry["tx"]),
                        "rx_offset": distribution(entry["rx"])} for slot, entry in sorted(slots.items())}
-    per_pattern = {pattern: {"cycle": distribution(values), "host_cycle": distribution(host_times[pattern]),
-                             "busy": distribution(busy[pattern])} for pattern, values in cycle_times.items()}
+    per_pattern = {pattern: {"cycle": distribution(values), "host_cycle": distribution(host_times[pattern])}
+                   for pattern, values in cycle_times.items()}
 
     utilisation = []
     for index, meta in enumerate(metas):
-        mine = [r for r in rows if r["file"] == index]
-        bits = sum(r["tx_bits"] for r in mine) + sum(r["rx_bits"] for r in mine if r["rx_bits"] is not None)
-        start = min(r["t_send_mono"] for r in mine)
-        end = max(max(r["t_send_mono"] for r in mine),
-                  max((r["t_rx_mono"] for r in mine if r["t_rx_mono"] is not None), default=start))
-        span = end - start
-        utilisation.append({"file": paths[index], "frames": len(mine) + sum(1 for r in mine if r["rx_bits"]),
+        fields = ("load_start_mono", "load_end_mono", "load_frames", "load_bits",
+                  "load_error_records", "load_unsupported_records")
+        recorded = all(meta.get(key) for key in fields)
+        frames = bits = span = fraction = None
+        error_records = unsupported_records = 0
+        if recorded:
+            start, end = (float(meta[key][0]) for key in fields[:2])
+            frames, bits, error_records, unsupported_records = (int(meta[key][0]) for key in fields[2:])
+            span = end - start
+            if (not all(math.isfinite(t) for t in (start, end)) or span <= 0
+                    or min(frames, bits, error_records, unsupported_records) < 0):
+                raise SystemExit(f"{paths[index]}: invalid load capture metadata")
+            fraction = bits * bit_time / span
+        utilisation.append({"file": paths[index], "frames": frames,
                             "bits": bits, "span": span,
-                            "fraction": bits * bit_time / span if span > 0 else math.nan,
+                            "fraction": fraction, "error_records": error_records,
+                            "unsupported_records": unsupported_records,
                             "counts": {k: meta[k][0] for k in ("no_reply", "no_echo", "stale_reply", "dup_reply",
                                                                 "stray_echo", "other", "error_frames", "late",
                                                                 "overrun") if k in meta}})
@@ -242,16 +257,22 @@ def report(summary):
                   f"{ms(rx['max'])}")
     print()
     print("Cycle (first TX echo -> last reply; complete cycles only)")
-    print("pattern         n  median     p95     max  host median  wire busy")
+    print("pattern         n  median     p95     max  host median")
     for pattern, entry in sorted(summary["per_pattern"].items()):
         cycle = entry["cycle"]
         print(f"{pattern:<10} {cycle['n']:>6}  {ms(cycle['median'])}  {ms(cycle['p95'])}  {ms(cycle['max'])}  "
-              f"     {ms(entry['host_cycle']['median'])}    {entry['busy']['median'] * 100:5.1f} %")
+              f"     {ms(entry['host_cycle']['median'])}")
     print()
-    print("Bus load (frame bits with stuffing, CRC and interframe space)")
+    print("Bus load estimate (all observed Classical CAN frames; stuffing, CRC and interframe space)")
     for entry in summary["utilisation"]:
+        if entry["fraction"] is None:
+            print(f"{entry['file']}: unavailable (legacy CSV has no whole-window frame counters; recapture)")
+            continue
         print(f"{entry['file']}: {entry['frames']} frames, {entry['bits']} bits over {entry['span']:.2f} s = "
               f"{entry['fraction'] * 100:.2f} % of the line")
+        if entry["error_records"] or entry["unsupported_records"]:
+            print(f"  INCOMPLETE: {entry['error_records']} error records, "
+                  f"{entry['unsupported_records']} unsupported frames; their wire time is excluded")
         counts = {k: v for k, v in entry["counts"].items() if v not in ("0", "")}
         if counts:
             print(f"  bookkeeping: {counts}")

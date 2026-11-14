@@ -24,6 +24,7 @@ from common import (
 )
 from motor_selection import SELECTOR_HELP, SelectionError, attached_variant, format_ids, resolve_motors
 from latency import StampedBus, hw_seconds, stamp
+from analyze_bus_timing import frame_bits
 from robonex_common.can import FeedbackHub, drain
 from robonex_common.protocol import COMM_FEEDBACK, COMM_OPERATION, float_to_uint, parse_arbitration_id
 
@@ -66,6 +67,44 @@ class Abort(Exception):
 
 class EnabledMotor(Abort):
     pass
+
+
+class LoadBus:
+    """Count observed traffic before exchange matching can discard it."""
+
+    def __init__(self, bus):
+        self.bus = bus
+        self.load_start_mono = None
+        self.load_end_mono = None
+        self.load_frames = 0
+        self.load_bits = 0
+        self.load_error_records = 0
+        self.load_unsupported_records = 0
+
+    def send(self, msg, timeout=None):
+        return self.bus.send(msg, timeout)
+
+    def recv(self, timeout=None):
+        msg = self.bus.recv(timeout)
+        if msg is None or self.load_start_mono is None or self.load_end_mono is not None:
+            return msg
+        if msg.is_error_frame:
+            self.load_error_records += 1
+            return msg
+        try:
+            if getattr(msg, "is_fd", False):
+                raise ValueError("CAN FD is not supported by this Classical CAN bench")
+            bits = frame_bits(msg.arbitration_id, msg.data, extended=msg.is_extended_id,
+                              remote=msg.is_remote_frame, dlc=msg.dlc)
+        except ValueError:
+            self.load_unsupported_records += 1
+        else:
+            self.load_frames += 1
+            self.load_bits += bits
+        return msg
+
+    def shutdown(self):
+        self.bus.shutdown()
 
 
 class Slot:
@@ -487,8 +526,10 @@ def run_cycles(bench, rows, references):
     while time.monotonic() < end:
         if period > 0.0:
             wait = next_tick - time.monotonic()
-            if wait > 0.0:
-                time.sleep(wait)
+            while wait > 0.0:
+                if bench.bus.recv(timeout=wait) is not None:
+                    bench.counts["late"] += 1
+                wait = next_tick - time.monotonic()
         t_cycle = time.monotonic()
         if t_cycle >= end:
             break
@@ -521,6 +562,7 @@ def capture(args, out):
     bus = open_bus(args)
     if bus is None:
         return 1
+    bus = LoadBus(bus)
     motors = [Motor(bus, joint.motor_id, SPECS[joint.motor_model], host_id=args.host_id) for joint in args.joints]
     bench = Bench(bus, motors, args)
     rows = []
@@ -545,7 +587,11 @@ def capture(args, out):
                 bench.set_command(motor, pos=references[motor.motor_id], kp=args.kp, kd=args.kd)
         drain(bus)
         print()
-        run_cycles(bench, rows, references)
+        bus.load_start_mono = time.monotonic()
+        try:
+            run_cycles(bench, rows, references)
+        finally:
+            bus.load_end_mono = time.monotonic()
     except Abort as error:
         reason = str(error)
         code = 1
@@ -558,13 +604,17 @@ def capture(args, out):
         reason = "interrupted"
         code = 1
         print("\nStop requested.")
+    except (can.CanError, OSError) as error:
+        reason = f"{type(error).__name__}: {error}"
+        code = 1
+        print(f"\nStopped: {reason}")
     finally:
         if started:
             release_hold(bench)
         else:
             bus.shutdown()
 
-    if rows:
+    if rows or bus.load_start_mono is not None:
         write_csv(out, args, bench, rows, reason, references)
         print(f"\nWrote {len(rows)} exchanges ({bench.counts['cycles']} cycles) to {out}")
         bad = {k: v for k, v in bench.counts.items() if v and k not in ("cycles", "exchanges")}
@@ -593,6 +643,10 @@ def write_csv(out, args, bench, rows, reason, references):
         w.writerow(["# hw_timestamps", int(args.hw_timestamps)])
         w.writerow(["# python_can", getattr(can, "__version__", "")])
         w.writerow(["# aborted", reason])
+        if bench.bus.load_start_mono is not None:
+            for name in ("load_start_mono", "load_end_mono", "load_frames", "load_bits",
+                         "load_error_records", "load_unsupported_records"):
+                w.writerow([f"# {name}", getattr(bench.bus, name)])
         for name, value in bench.counts.items():
             w.writerow([f"# {name}", value])
         w.writerow(COLUMNS)

@@ -381,9 +381,28 @@ python3 scripts/measurements/latency/analyze_bus_timing.py "scripts/measurements
 | round trip | Per motor and pattern: command TX echo to its own reply, median, p95, max; missed replies |
 | rt-wire | Round trip minus both frame times (exact bits with stuffing): the motor's turnaround in `sequential`, turnaround plus queueing in `burst` |
 | burst slots | Per slot: TX echo and reply time from the cycle's first TX echo |
-| cycle | First TX echo to last reply of a complete cycle, host-clock cycle, share of the cycle the wire is busy |
-| bus load | Frame bits over the capture time as a share of the line |
+| cycle | First TX echo to last reply of a complete cycle, and host-clock cycle |
+| bus load | All observed Classical CAN frame bits over the full monotonic capture window, as an estimate of line usage |
 | burst vs sequential | Cycle medians and per-motor round trips side by side |
+
+Bus load uses every Classical CAN frame observed during the full monotonic measurement window,
+before exchange matching: TX echoes, late/duplicate/unmatched replies, and other standard or extended
+frames all count once, including traffic received during idle gaps and the final period. Setup, probes,
+and hold-release traffic are outside this window. A send attempt alone does not count as a transmitted
+frame. The CSV stores independent `load_*` counters and start/end times; matched rows still determine
+latency statistics. CAN I/O errors save the counters and rows collected before the failure.
+
+This is a receive-window frame estimate, not a physical bus analyzer. Error records and unsupported
+frames (including CAN FD) are flagged `INCOMPLETE`; their wire time, controller retransmissions, and
+traffic lost before reaching this socket cannot be reconstructed. USB buffering can shift observations
+at the window boundaries. Legacy CSVs still show latency statistics, but bus load is `unavailable`
+because their discarded frames and full capture window were not recorded.
+
+Offline regression checks (no CAN interfaces opened):
+
+```bash
+python3 -m unittest discover -s tests -v
+```
 
 <br>
 
