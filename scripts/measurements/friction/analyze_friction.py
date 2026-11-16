@@ -46,18 +46,14 @@ def main():
         })
 
     if skipped:
-        print("Skipped files without a breakaway result:")
         for path, reason in skipped:
-            print(f"  {os.path.basename(path)}: stop_reason={reason}")
-        print()
+            print(f"Skipped {os.path.basename(path)}: stop_reason={reason}")
 
     if not groups:
         print("ERROR: No valid breakaway results.")
         return 1
 
-    print("=" * 72)
     print(f"{'motor_id':>8} {'model':>6} {'sign':>5} {'n':>3} {'mean':>12} {'std':>10} {'bracket range':>20}")
-    print("-" * 72)
     summary = {}
     for (motor_id, model, sign), entries in sorted(groups.items()):
         mids = [e["mid"] for e in entries]
@@ -68,14 +64,13 @@ def main():
         summary[(motor_id, model, sign)] = mean
         print(f"{motor_id:>8} {model:>6} {sign:>5} {len(entries):>3} {mean:>+12.4f} {std:>10.4f} "
               f"[{lo:>+.3f}, {hi:>+.3f}]")
-        for e in entries:
+        for e in (entries if len(entries) > 1 else ()):
             print(f"    - {os.path.basename(e['path'])}: mid={e['mid']:+.4f}  "
                   f"bracket=[{min(e['low'], e['high']):+.3f}, {max(e['low'], e['high']):+.3f}]")
-    print("=" * 72)
 
     motor_ids = sorted({k[0] for k in summary})
     if len(motor_ids) > 1:
-        print("\nMotor comparison by model and sign:")
+        print("Motor comparison by model and sign:")
         by_model_sign = defaultdict(dict)
         for (motor_id, model, sign), mean in summary.items():
             by_model_sign[(model, sign)][motor_id] = mean
@@ -86,7 +81,6 @@ def main():
                 spread = max(v for _, v in vals) - min(v for _, v in vals)
                 print(f"  {model} sign={sign}: {desc} (range {spread:.4f} N*m)")
 
-    print("\nDirection comparison by motor:")
     by_motor = defaultdict(dict)
     for (motor_id, model, sign), mean in summary.items():
         by_motor[motor_id][sign] = mean
@@ -94,10 +88,8 @@ def main():
         if "1" in per_sign and "-1" in per_sign:
             pos_v, neg_v = per_sign["1"], per_sign["-1"]
             asym = abs(abs(pos_v) - abs(neg_v))
-            print(f"  ID{motor_id}: positive={pos_v:+.4f}, negative={neg_v:+.4f}, "
+            print(f"ID{motor_id} direction: positive={pos_v:+.4f}, negative={neg_v:+.4f}, "
                   f"magnitude difference={asym:.4f} N*m")
-        else:
-            print(f"  ID{motor_id}: only signs {list(per_sign.keys())} were measured")
 
     return 0
 

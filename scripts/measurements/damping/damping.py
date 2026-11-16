@@ -234,14 +234,14 @@ def capture_once(args, speed, run_index):
         if initial_pos is None:
             print(f"ERROR: Motor ID {args.motor_id} did not reply on {args.channel}.")
             return 1, None, "no_response"
-        print(f"Position: {initial_pos:+.4f} rad ({math.degrees(initial_pos):+.2f} deg)")
-
         fault_reg = motor.read_param(FAULT_STA_INDEX, fmt="<I", timeout=0.3)
         if fault_reg is None:
             print("WARNING: Fault register 0x3022 could not be read.")
+            fault_text = "unread"
         else:
             bits = decode_fault_bits(fault_reg)
-            print(f"Fault register: 0x{fault_reg:08X}" + (f" ({', '.join(bits)})" if bits else " (OK)"))
+            fault_text = f"0x{fault_reg:08X}" + (f" ({', '.join(bits)})" if bits else " (OK)")
+        print(f"Position: {math.degrees(initial_pos):+.2f} deg, fault {fault_text}")
 
         if not arm_can_watchdog(motor, args.can_timeout_ms):
             return 1, None, "watchdog_not_armed"
@@ -271,7 +271,6 @@ def capture_once(args, speed, run_index):
             if lo is None:
                 print(f"ERROR: No joint limit is defined for motor ID {args.motor_id}.")
                 return 1, None, "missing_joint_limit"
-            print(f"URDF joint limit: {math.degrees(lo):+.1f} to {math.degrees(hi):+.1f} deg")
             if exceeds_joint_limit(pos_ref, args.motor_id, args.limit_margin):
                 print(f"ERROR: Position {pos_ref:+.4f} rad ({math.degrees(pos_ref):+.1f} deg) is outside the joint limit.")
                 motor.stop()
@@ -280,7 +279,6 @@ def capture_once(args, speed, run_index):
             room = (hi_m - pos_ref) if args.speed > 0 else (pos_ref - lo_m)
             print(f"Available travel: {math.degrees(room):.1f} deg")
 
-        print(f"Ramping to {args.speed:+.3f} rad/s...")
         ok, pos_now, vel_now, ramp_reason = ramp_to_speed(
             motor, args.speed, args.kd, pos_ref, args, "ramp-up")
         if not ok:
@@ -288,18 +286,16 @@ def capture_once(args, speed, run_index):
             return 1, None, ramp_reason
         if args.speed != 0 and (vel_now == 0.0 or vel_now / args.speed < 0):
             print(f"WARNING: Velocity {vel_now:+.3f} does not track target {args.speed:+.3f} rad/s.")
-        print(f"Recording at pos={pos_now:+.4f} rad, vel={vel_now:+.3f} rad/s...")
+        print(f"Recording at pos={pos_now:+.4f} rad, vel={vel_now:+.3f} rad/s")
 
         rows, stop_reason = run_hold(motor, args.speed, args.kd, pos_ref, args)
 
-        print("Decelerating...")
         ramp_to_speed(motor, 0.0, args.kd, None, args, "ramp-down", start_speed=args.speed)
-        print("Returning to zero...")
         final_pos = return_to_zero(motor)
         if final_pos is None:
-            print("Return position: unknown (no feedback)")
+            print("WARNING: Return position unknown (no feedback).")
         else:
-            print(f"Return position: {final_pos:+.4f} rad ({math.degrees(final_pos):+.2f} deg)")
+            print(f"Returned to {final_pos:+.4f} rad ({math.degrees(final_pos):+.2f} deg)")
     except KeyboardInterrupt:
         print("\nInterrupted.")
         stop_reason = "keyboard_interrupt"
@@ -383,7 +379,7 @@ def main():
             time.sleep(PAUSE_S)
 
     if paths:
-        print("\nAnalyzing captured CSV files...")
+        print()
         analysis = subprocess.run([sys.executable, ANALYZE, *paths])
         failed = failed or analysis.returncode != 0
     return 1 if failed or not paths else 0

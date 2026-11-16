@@ -151,7 +151,6 @@ def summary_line(motor_id, lo, hi, samples):
 
 def print_summary(motor_ids, minmax, samples):
     print(f"\n{'ID':>3}  {'joint':<18}  {'min':>8}  {'max':>8}  {'span':>7}  {'defined limit':>18}  {'n':>6}")
-    print("-" * 88)
     for motor_id in motor_ids:
         lo, hi = minmax[motor_id]
         print(summary_line(motor_id, lo, hi, samples[motor_id]))
@@ -672,7 +671,6 @@ def shutdown_all(channels):
 
 def print_hold_summary(scan, aborted):
     print(f"\n{'ID':>3}  {'joint':<18}  {'min':>8}  {'max':>8}  {'span':>7}  {'defined limit':>18}  {'n':>6}")
-    print("-" * 88)
     for row in scan.done:
         print(summary_line(*row))
     finished = [row[0] for row in scan.done]

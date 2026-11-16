@@ -224,7 +224,6 @@ def main():
         )
         for channel in channels
     ]
-    print(f"Capturing {len(motor_ids)} motors on {len(channels)} channels...")
     interrupted = False
     main_error = None
     started_threads = []

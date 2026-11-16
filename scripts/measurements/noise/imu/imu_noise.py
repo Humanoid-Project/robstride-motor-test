@@ -41,8 +41,7 @@ def main():
               f"&& cmake --build build -j")
         return 1
 
-    print(f"Capturing IMU data from {args.port} at {args.baud} baud for {args.duration:.1f}s.")
-    print("Keep the IMU completely stationary.")
+    print(f"Capturing IMU {args.port} at {args.baud} baud for {args.duration:.1f}s; keep the IMU stationary.")
 
     driver = n100.ImuDriver(n100.DriverConfig(
         port=args.port, baudrate=args.baud,

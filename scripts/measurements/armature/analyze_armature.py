@@ -122,7 +122,6 @@ def main():
         paths.extend(matched if matched else [pattern])
     paths = [p for p in dict.fromkeys(paths)]
 
-    print(f"Files: {len(paths)}")
     results = [r for r in (analyze_file(path, SKIP_S) for path in paths) if r is not None]
 
     if len(results) < 2:
@@ -141,8 +140,7 @@ def main():
 
     problem = excitation_problem(alpha, [r["tau_cmd"] for r in results])
     if problem:
-        print(f"ERROR: The fit is not identifiable: {problem}.")
-        print("    Measure at least two different torque magnitudes.")
+        print(f"ERROR: The fit is not identifiable: {problem}. Measure at least two different torque magnitudes.")
         return 1
 
     sign_alpha = np.sign(alpha)
@@ -168,29 +166,19 @@ def main():
     pred = design @ np.array([J, friction])
     r2 = r_squared(tau, pred)
 
-    print()
-    print("Result: tau = J * alpha + friction * sign(alpha)")
-    print(f"  output armature J = {J:.6f} kg*m^2"
-          + (f" (±{j_stderr:.6f}, 1-sigma)" if j_stderr is not None else ""))
-    print(f"  dynamic friction intercept = {friction:+.4f} N*m")
-    print(f"  R²                        = {r2:.4f}")
+    print(f"Result (tau = J*alpha + friction*sign(alpha)): J = {J:.6f} kg*m^2"
+          + (f" (+-{j_stderr:.6f}, 1-sigma)" if j_stderr is not None else "")
+          + f", friction {friction:+.4f} N*m, R^2 {r2:.4f}")
 
     placeholder = PLACEHOLDER_ARMATURE.get(model)
     if placeholder:
         ratio = J / placeholder if placeholder else float("nan")
-        print(f"  simulator={placeholder} kg*m^2, measured/simulator={ratio:.1f}x ({model})")
+        print(f"Simulator {model}: {placeholder} kg*m^2, measured/simulator {ratio:.1f}x")
 
     if len(results) == 2:
         print("WARNING: Two runs determine the fit exactly, so R² is 1 by construction; add a third run.")
     if not np.isfinite(r2) or r2 < 0.95:
-        print("WARNING: Low R²; repeat the measurement under consistent conditions.")
-        print("    Use a wider torque range or repeat the measurement under the same conditions.")
-
-    print("\nRuns:")
-    print(f"  {'file':<40} {'tau_cmd':>8} {'tau_meas':>9} {'alpha':>10} {'n':>4} {'R2':>7}")
-    for r in results:
-        print(f"  {os.path.basename(r['path']):<40} {r['tau_cmd']:>+8.3f} {r['tau_meas']:>+9.3f} "
-              f"{r['alpha']:>+10.2f} {r['n']:>4} {r['r2']:>7.4f}")
+        print("WARNING: Low R²; use a wider torque range or repeat under the same conditions.")
 
     return 0
 

@@ -42,20 +42,19 @@ def main():
         return 1
     header, a = load(sys.argv[1])
     if a.size == 0:
-        print("no samples")
+        print("ERROR: No samples.")
         return 1
     rep, off, target, pos, vel, torque, temp = (a[:, i] for i in range(7))
     kp_cmd = float(header.get("commanded_kp", "nan"))
     err = target - pos
 
-    print(f"motor ID {header.get('motor_id')}  model {header.get('model')}  "
-          f"commanded kp {kp_cmd}  kd {header.get('commanded_kd')}")
-    print(f"{len(a)} samples, {len(np.unique(off))} offsets, {len(np.unique(rep))} repeats")
+    print(f"ID {header.get('motor_id')} {header.get('model')}, commanded kp {kp_cmd} kd {header.get('commanded_kd')}; "
+          f"{len(a)} samples, {len(np.unique(off))} offsets, {len(np.unique(rep))} repeats, "
+          f"temperature {temp.min():.0f} -> {temp.max():.0f} C")
     # |vel| is dominated by feedback noise (std 0.067-0.093 rad/s measured 2026-09-18), so it is
     # never near zero even on a joint that is perfectly still. Net drift is the signal here.
     print(f"velocity: mean {vel.mean():+.4f} rad/s (drift), |vel| mean {np.abs(vel).mean():.4f} "
           f"(mostly feedback noise)")
-    print(f"temperature {temp.min():.0f} -> {temp.max():.0f} C\n")
 
     print(f"{'offset':>8}{'err deg':>10}{'torque':>10}{'n':>5}")
     for o in sorted(np.unique(off)):
@@ -67,16 +66,11 @@ def main():
     resid = torque - A @ (np.array([slope, intercept]))
     ss = 1.0 - resid.var() / torque.var() if torque.var() > 0 else float("nan")
 
-    print(f"\n--- fit: torque = kp * error + offset ---")
-    print(f"  effective kp : {slope:8.2f} N.m/rad")
-    print(f"  commanded kp : {kp_cmd:8.2f}")
-    if math.isfinite(kp_cmd) and kp_cmd:
-        print(f"  ratio        : {slope / kp_cmd:8.2f}   <-- 1.00 means the joint honours the command")
-    print(f"  offset       : {intercept:+8.3f} N.m   (near zero either loaded or free; not a check)")
-    print(f"  R^2          : {ss:8.3f}")
-    print(f"  residual RMS : {resid.std():8.3f} N.m")
+    ratio = f", ratio {slope / kp_cmd:.2f}" if math.isfinite(kp_cmd) and kp_cmd else ""
+    print(f"Fit: effective kp {slope:.2f} N*m/rad (commanded {kp_cmd:.2f}{ratio}), offset {intercept:+.3f} N*m, "
+          f"R^2 {ss:.3f}, residual RMS {resid.std():.3f} N*m")
     if abs(vel.mean()) > 0.02:
-        print("  WARNING: the joint drifted during sampling. Increase --settle-time.")
+        print("WARNING: The joint drifted during sampling. Increase --settle-time.")
     return 0
 
 

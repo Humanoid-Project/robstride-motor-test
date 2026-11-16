@@ -369,7 +369,6 @@ def confirm(args):
               f"{args.rest_time:g} s at the reference; about {run_duration(args):.0f} s in total")
         print(f"Abort if the joint moves more than {math.degrees(limits['deviation']):.2f} deg from the reference "
               f"or faster than {limits['speed']:.2f} rad/s")
-        print()
         print("The joint moves by the step and back; it is not commanded to run.")
         print("WARNING: Verify zero calibration, secure the robot, and prepare the E-stop.")
         if not sys.stdin.isatty():
@@ -394,7 +393,6 @@ def confirm(args):
         print(f"Expected position shift per step: kd*v/kp = {math.degrees(largest / args.kp):.2f} deg at most")
     else:
         print(f"Expected position shift per step: tau/kp = {math.degrees(largest / args.kp):.2f} deg at most")
-    print()
     print("The joint is pushed against its own position hold; it is not commanded to run.")
     print("WARNING: Verify zero calibration, secure the robot, and prepare the E-stop.")
     if not sys.stdin.isatty():
@@ -627,7 +625,6 @@ def capture(args, out):
             print(f"ERROR: motor is not running after enable (mode {motor.last_mode_status}, "
                   f"expected {MODE_RUNNING}); nothing was measured.")
             return 1
-        print(f"Run mode confirmed (mode {MODE_RUNNING}).")
         if not args.ignore_joint_limit:
             bad = limit_problems(args, reference)
             if bad:
@@ -640,7 +637,6 @@ def capture(args, out):
         run_phase(link, reference, 0.0, WARMUP_TIME, 0.0, None, rows, limits)
         for name in link.counts:
             link.counts[name] = 0
-        print()
         trial = 0
         for rep in range(args.repeats):
             gap = (rep % args.phase_steps) / args.phase_steps * args.phase_span_ms * 1e-3
@@ -700,7 +696,7 @@ def capture(args, out):
                 w.writerow([f"# {name}", value])
             w.writerow(COLUMNS)
             w.writerows(rows)
-        print(f"\nWrote {len(rows)} cycles to {out}")
+        print(f"Saved: {out} ({len(rows)} cycles)")
         bad = {k: v for k, v in link.counts.items() if v and k != "cycles"}
         if bad:
             print(f"Frame bookkeeping: {bad}")

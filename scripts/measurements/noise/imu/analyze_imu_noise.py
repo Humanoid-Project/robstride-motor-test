@@ -54,7 +54,6 @@ def main():
 
     print(f"Samples: {len(rows)} from {len(paths)} files")
     print(f"{'signal':<12} {'axis':>4} {'bias(mean, rad/s)':>20} {'noise(std, rad/s)':>20}")
-    print("-" * 78)
     for label, cols in (("fused (AHRS)", FUSED_COLS), ("raw", RAW_COLS)):
         for axis in AXES:
             values = [float(r[cols[axis]]) for r in rows]
@@ -64,12 +63,11 @@ def main():
     fused_std = [stats([float(r[FUSED_COLS[a]]) for r in rows])[1] for a in AXES]
     lo, hi = REFERENCE_DESK_NOISE_RAD_S
     worst = max(fused_std)
-    print(f"Reference stationary noise: {lo} to {hi} rad/s.")
     if worst > hi:
         ratio = worst / hi
-        print(f"WARNING: Maximum axis noise is {worst:.6f} rad/s ({ratio:.1f}x reference).")
+        print(f"WARNING: Maximum axis noise is {worst:.6f} rad/s ({ratio:.1f}x the {lo} to {hi} rad/s reference).")
     else:
-        print(f"Maximum axis noise is within the reference range: {worst:.6f} rad/s.")
+        print(f"Maximum axis noise {worst:.6f} rad/s is within the {lo} to {hi} rad/s reference.")
 
     return 0
 

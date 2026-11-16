@@ -56,7 +56,6 @@ def motor_for(joint, buses, motors, host_id):
 
 
 def brake(args, buses, motors):
-    print(f"Braking... ({args.brake_time:.2f} s, kd={args.kd})")
     deadline = time.monotonic() + args.brake_time
     while time.monotonic() < deadline:
         for motor in motors.values():
@@ -92,7 +91,6 @@ def disable_all(args, results, buses, motors):
         brake(args, buses, motors)
     for bus in buses.values():
         drain(bus)
-    print("\nDisabling...")
     for motor_id, motor in motors.items():
         try:
             motor.stop()
@@ -127,7 +125,7 @@ def stop_remaining(args, results, buses, motors):
 
 
 def report(joints, results):
-    print(f"\n{'ID':>3}  {'joint':<18}  {'speed':>10}  {'status':<19}  detail")
+    print(f"{'ID':>3}  {'joint':<18}  {'speed':>10}  {'status':<19}  detail")
     for channel, channel_joints in motors_by_channel(joints).items():
         print(f"[{channel}]")
         for joint in channel_joints:
@@ -138,7 +136,7 @@ def report(joints, results):
     for status, _speed, _detail in results.values():
         counts[status] += 1
     print(
-        f"\n{counts['stopped']}/{len(joints)} motors confirmed stopped; "
+        f"{counts['stopped']}/{len(joints)} motors confirmed stopped; "
         + ", ".join(f"{status} {counts[status]}" for status in STATUSES[1:])
         + "."
     )

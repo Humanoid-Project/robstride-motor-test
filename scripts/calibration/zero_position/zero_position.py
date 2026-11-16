@@ -155,7 +155,6 @@ def main():
         for channel in sorted({channel_for_id(motor_id) for motor_id in active_ids}):
             buses[channel] = open_bus(channel, DEFAULT_INTERFACE)
 
-        print("Scanning motors...")
         before = {}
         missing = []
         for motor_id in active_ids:
@@ -167,17 +166,16 @@ def main():
                 continue
             before[motor_id] = position
 
-        print(f"Found {len(before)}/{len(active_ids)} motors.")
         if missing:
-            print(f"Skipped IDs (no reply): {', '.join(str(i) for i in missing)}")
+            print(f"WARNING: No reply from IDs {', '.join(str(i) for i in missing)}; skipped.")
 
         if not before:
             print("No motors available. Stopping.")
             return 1
 
         position_range = "-pi to pi" if args.pos_range == 1 else "0 to 2pi"
-        print(f"Target IDs: {', '.join(str(i) for i in sorted(before))}.")
-        print(f"Position range: {position_range}.")
+        print(f"Found {len(before)}/{len(active_ids)} motors: IDs {', '.join(str(i) for i in sorted(before))}; "
+              f"position range {position_range}.")
         if args.save:
             print("WARNING: Motors will be disabled, zeroed at their current positions, and saved.")
         else:
@@ -186,7 +184,6 @@ def main():
         answer = input("Press Enter to continue or Ctrl-C to cancel: ")
         del answer
 
-        print("Zeroing motors...")
         ok_count = 0
         for motor_id in sorted(before):
             channel = channel_for_id(motor_id)

@@ -100,7 +100,6 @@ def channel_lines(channel, joints, positions, error=None, rate=None):
         lines.append(f"  open failed: {error.reason}")
         lines.append(f"  -> {error.hint}")
     lines.append(f"  {'ID':>3}  {'joint':<20}  {'group':<9}  {'model':<5}  {'position':>28}")
-    lines.append("  " + "-" * 73)
     for joint in joints:
         position = None if error is not None else positions.get(joint.motor_id)
         lines.append(f"  {joint.motor_id:>3}  {joint.hardware_name:<20}  {joint.group:<9}  "

@@ -136,9 +136,7 @@ def main(zero_pose=False):
         }
         hub_of = {mid: hubs[channel_for_id(mid)] for mid in motors}
 
-        print(f"Reading current positions on {', '.join(needed_channels)}...\n")
         print(f"{'ID':>3}  {'ch':<5}  {'joint':<18}  {'model':<5}  {'current':>26}  {'target':>26}")
-        print("-" * 104)
         move_time = MIN_MOVE_TIME
         for motor_id, m in motors.items():
             current = m["motor"].read_mech_position(timeout=0.3)
@@ -146,12 +144,12 @@ def main(zero_pose=False):
             if current is None:
                 print(f"{motor_id:>3}  {channel:<5}  {JOINT_MAP.get(motor_id, '?'):<18}  "
                       f"{m['motor'].spec.name:<5}  {'no response':>26}")
-                print(f"\nMotor ID {motor_id} did not respond. Check power, wiring, and ID.")
+                print(f"ERROR: Motor ID {motor_id} did not respond. Check power, wiring, and ID.")
                 return 1
             if abs(current) > math.pi:
                 print(f"{motor_id:>3}  {channel:<5}  {JOINT_MAP.get(motor_id, '?'):<18}  "
                       f"{m['motor'].spec.name:<5}  {fmt(current):>26}")
-                print(f"\nMotor ID {motor_id} reads outside -180..+180 deg. "
+                print(f"ERROR: Motor ID {motor_id} reads outside -180..+180 deg. "
                       "Set zero_sta=1 (0x7029) on it before moving.")
                 return 1
             target = current if m["target_cfg"] is None else m["target_cfg"]
@@ -162,28 +160,27 @@ def main(zero_pose=False):
             print(f"{motor_id:>3}  {channel:<5}  {JOINT_MAP.get(motor_id, '?'):<18}  "
                   f"{m['motor'].spec.name:<5}  {fmt(current):>26}  {fmt(m['target']):>26}{note}")
 
-        print(f"\nMove time: about {move_time:.1f} s at {MOVE_SPEED} rad/s, "
+        print(f"Move time: about {move_time:.1f} s at {MOVE_SPEED} rad/s, "
               f"hold gains kp={HOLD_KP}, kd={HOLD_KD}")
 
         if not sys.stdin.isatty():
-            print("Confirmation requires an interactive terminal.")
+            print("ERROR: Run this command in an interactive terminal.")
             return 1
         try:
-            answer = input("\nPress Enter to start, or Ctrl-C to cancel: ")
+            answer = input("Press Enter to start, or Ctrl-C to cancel: ")
             del answer
         except (KeyboardInterrupt, EOFError):
             print("\nCancelled.")
             return 0
 
         def emergency_stop(reason):
-            print(f"\nEmergency stop: {reason}")
+            print(f"\nEMERGENCY STOP: {reason}")
             for mm in motors.values():
                 try:
                     mm["motor"].stop()
                 except can.CanError:
                     pass
 
-        print("\nEnabling...")
         for motor_id, m in motors.items():
             m["motor"].write_run_mode_operation()
             time.sleep(0.005)
@@ -223,7 +220,7 @@ def main(zero_pose=False):
                             f"{math.degrees(mm['cmd'] - motor.last_position):+.1f} deg")
             return None
 
-        print(f"Starting move ({move_time:.1f} s)...")
+        print(f"Moving ({move_time:.1f} s)")
         start_time = time.monotonic()
         while True:
             now = time.monotonic()
@@ -250,8 +247,9 @@ def main(zero_pose=False):
             if sleep > 0:
                 time.sleep(sleep)
 
-        print("\nTargets reached. Holding position. Press Ctrl-C to stop.\n")
+        print("Targets reached. Holding position. Press Ctrl-C to stop.")
         last_print = 0.0
+        drawn = 0
         while True:
             now = time.monotonic()
             for m in motors.values():
@@ -265,31 +263,32 @@ def main(zero_pose=False):
                 return 1
             if now - last_print >= 1.0:
                 last_print = now
-                print(f"[{time.strftime('%H:%M:%S')}] Holding position")
-                print(f"  {'ID':>3} {'joint':<16} {'current→target deg':>20} "
-                      f"{'error deg':>10} {'torque N·m':>18} {'temp':>6}")
+                lines = [f"[{time.strftime('%H:%M:%S')}] {'ID':>3} {'joint':<16} {'current->target deg':>20} "
+                         f"{'error deg':>10} {'torque N*m':>18} {'temp':>6}"]
                 for mid, m in motors.items():
                     mm = m["motor"]
                     tmax = mm.spec.t_max
                     cur = mm.last_position
                     if cur is None:
-                        line = f"  {mid:>3} {JOINT_MAP.get(mid, '?'):<16} {'(no feedback)':>20}"
+                        line = f"           {mid:>3} {JOINT_MAP.get(mid, '?'):<16} {'(no feedback)':>20}"
                     else:
                         err = math.degrees(m["target"] - cur)
                         tq_pct = abs(mm.last_torque) / tmax * 100.0 if tmax else 0.0
-                        line = (f"  {mid:>3} {JOINT_MAP.get(mid, '?'):<16} "
-                                f"{math.degrees(cur):+7.1f}→{math.degrees(m['target']):+7.1f}"
+                        line = (f"           {mid:>3} {JOINT_MAP.get(mid, '?'):<16} "
+                                f"{math.degrees(cur):+7.1f}->{math.degrees(m['target']):+7.1f}"
                                 f" {err:+10.1f}"
                                 f" {mm.last_torque:+7.2f}/{tmax:.0f}({tq_pct:3.0f}%)"
                                 f" {mm.last_temp:5.1f}C")
-                    print(line)
-                print()
+                    lines.append(line)
+                sys.stdout.write((f"\033[{drawn}F" if drawn else "") + "".join(f"{text}\033[K\n" for text in lines))
+                sys.stdout.flush()
+                drawn = len(lines)
             sleep = period - (time.monotonic() - now)
             if sleep > 0:
                 time.sleep(sleep)
 
     except KeyboardInterrupt:
-        print("\n\nStop requested. Stopping motors...")
+        print("\nStop requested.")
     finally:
         signal.signal(signal.SIGINT, signal.SIG_IGN)
         for m in motors.values():

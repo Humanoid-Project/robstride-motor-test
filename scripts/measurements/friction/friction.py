@@ -410,8 +410,6 @@ def run_search(motor, pos_start, args):
                 steps_taken += 1
                 current_torque = args.sign * round(args.start_torque + steps_taken * args.step, 9)
                 step_deadline = now + args.probe_time
-                print()
-                print(f"Torque: {current_torque:+.3f} N*m")
                 if abs(current_torque) > abs(max_torque_signed) + 1e-9:
                     stop_reason = "max_torque_no_movement"
                     break
@@ -491,14 +489,14 @@ def capture_once(args, sign, run_index):
         if initial_pos is None:
             print(f"ERROR: Motor ID {args.motor_id} did not reply on {args.channel}.")
             return 1, None, "no_response"
-        print(f"Position: {initial_pos:+.4f} rad ({math.degrees(initial_pos):+.2f} deg)")
-
         fault_reg = motor.read_param(FAULT_STA_INDEX, fmt="<I", timeout=0.3)
         if fault_reg is None:
             print("WARNING: Fault register 0x3022 could not be read.")
+            fault_text = "unread"
         else:
             bits = decode_fault_bits(fault_reg)
-            print(f"Fault register: 0x{fault_reg:08X}" + (f" ({', '.join(bits)})" if bits else " (OK)"))
+            fault_text = f"0x{fault_reg:08X}" + (f" ({', '.join(bits)})" if bits else " (OK)")
+        print(f"Position: {math.degrees(initial_pos):+.2f} deg, fault {fault_text}")
 
         if not arm_can_watchdog(motor, args.can_timeout_ms):
             return 1, None, "watchdog_not_armed"
@@ -543,14 +541,13 @@ def capture_once(args, sign, run_index):
                 return 1, None, "approach_failed"
             may_return = True
 
-        print("Waiting for the motor to settle...")
         pos_start = wait_settled(active, initial_pos, args)
         if pos_start is None:
             print("ERROR: The motor did not settle before the safety timeout.")
             may_return = False
             active.stop()
             return 1, None, "not_settled"
-        print(f"Settled at {pos_start:+.4f} rad. Starting torque search...")
+        print(f"Settled at {pos_start:+.4f} rad; torque search")
         if held is not None:
             problem = held.hold_problem()
             if problem:
@@ -610,9 +607,8 @@ def capture_once(args, sign, run_index):
     if stop_reason == "movement_detected":
         breakaway_low, breakaway_high = sorted((torque_at_stop - args.sign * args.step, torque_at_stop))
         breakaway_mid = (breakaway_low + breakaway_high) / 2.0
-        print(f"Breakaway bracket: [{min(breakaway_low, breakaway_high):.3f}, "
-              f"{max(breakaway_low, breakaway_high):.3f}] N*m")
-        print(f"Breakaway estimate: {breakaway_mid:+.3f} N*m (±{abs(args.step)/2:.3f})")
+        print(f"Breakaway: {breakaway_mid:+.3f} +- {abs(args.step)/2:.3f} N*m "
+              f"[{min(breakaway_low, breakaway_high):.3f}, {max(breakaway_low, breakaway_high):.3f}]")
     elif stop_reason == "movement_at_start_suspicious":
         print(f"WARNING: Movement started at the first torque step ({torque_at_stop:+.3f} N*m); discard and repeat.")
     elif stop_reason == "max_torque_no_movement":
@@ -716,7 +712,7 @@ def main():
             time.sleep(PAUSE_S)
 
     if paths:
-        print("\nAnalyzing captured CSV files...")
+        print()
         analysis = subprocess.run([sys.executable, ANALYZE, *paths])
         failed = failed or analysis.returncode != 0
     return 1 if failed or not paths else 0

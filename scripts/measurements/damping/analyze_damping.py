@@ -120,7 +120,6 @@ def main():
         paths.extend(matched if matched else [pattern])
     paths = list(dict.fromkeys(paths))
 
-    print(f"Files: {len(paths)}")
     results = [r for r in (analyze_file(path, SKIP_S) for path in paths) if r is not None]
 
     if len(results) < 2:
@@ -137,8 +136,7 @@ def main():
     tau = np.array([r["tau"] for r in results])
     problem = excitation_problem(omega, [r["speed_cmd"] for r in results])
     if problem:
-        print(f"ERROR: The fit is not identifiable: {problem}.")
-        print("    Measure at least two different speed magnitudes.")
+        print(f"ERROR: The fit is not identifiable: {problem}. Measure at least two different speed magnitudes.")
         return 1
 
     sign_omega = np.sign(omega)
@@ -161,20 +159,17 @@ def main():
         except np.linalg.LinAlgError:
             stderr = None
 
-    print()
-    print("Result: tau = b * omega + c * sign(omega)")
-    print(f"  output damping b = {b:.6f} N*m/(rad/s)"
-          + (f" (±{stderr[0]:.6f}, 1-sigma)" if stderr is not None else ""))
-    print(f"  Coulomb friction c = {c:+.4f} N*m"
-          + (f"  (±{stderr[1]:.6f})" if stderr is not None else "") +
-          "")
-    print(f"  R²                        = {r2:.4f}")
+    print(f"Result (tau = b*omega + c*sign(omega)): b = {b:.6f} N*m/(rad/s)"
+          + (f" (+-{stderr[0]:.6f}, 1-sigma)" if stderr is not None else "")
+          + f", c = {c:+.4f} N*m"
+          + (f" (+-{stderr[1]:.6f})" if stderr is not None else "")
+          + f", R^2 {r2:.4f}")
 
     model = next(iter(models))
     placeholder = PLACEHOLDER_DAMPING.get(model)
     if placeholder:
         ratio = b / placeholder if placeholder else float("nan")
-        print(f"  simulator={placeholder} N*m/(rad/s), measured/simulator={ratio:.1f}x ({model})")
+        print(f"Simulator {model}: {placeholder} N*m/(rad/s), measured/simulator {ratio:.1f}x")
 
     n_pos = int(np.sum(omega > 0))
     n_neg = int(np.sum(omega < 0))
@@ -187,11 +182,6 @@ def main():
         print("WARNING: Two runs determine the fit exactly, so R² is 1 by construction; add a third run.")
     if not np.isfinite(r2) or r2 < 0.9:
         print("WARNING: Low R²; verify settling and possible nonlinear damping.")
-
-    print("\nRuns:")
-    print(f"  {'file':<42} {'omega':>8} {'tau':>9} {'n':>5}")
-    for r in results:
-        print(f"  {os.path.basename(r['path']):<42} {r['omega']:>+8.3f} {r['tau']:>+9.4f} {r['n']:>5}")
 
     return 0
 

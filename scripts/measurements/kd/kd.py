@@ -68,9 +68,8 @@ def confirm(args):
     print(f"Motor: ID {args.motor_id}, {args.model.upper()}, {args.channel}")
     print(f"Holding kp {args.kp}, commanded kd {args.kd}")
     print(f"Velocity targets: {args.vel_targets} rad/s x {args.repeats}")
-    print(f"Expected position shift per step: kd*vel/kp = {math.degrees(shift):.2f} deg")
-    print(f"Expected torque step: kd*vel = {args.kd*max(abs(v) for v in args.vel_targets):.2f} N.m")
-    print()
+    print(f"Expected per step: shift kd*vel/kp = {math.degrees(shift):.2f} deg, "
+          f"torque kd*vel = {args.kd*max(abs(v) for v in args.vel_targets):.2f} N*m")
     print("The joint is NOT commanded to run: the position target stays fixed the whole time.")
     print("WARNING: Verify zero calibration, secure the robot, and prepare the E-stop.")
     if not sys.stdin.isatty():
@@ -171,7 +170,6 @@ def main():
             print(f"ERROR: motor is not running after enable (mode {motor.last_mode_status}, "
                   f"expected {MODE_RUNNING}); nothing was measured.")
             return 1
-        print(f"Run mode confirmed (mode {MODE_RUNNING}).")
         if not args.ignore_joint_limit:
             lo, hi = joint_limit_for(args.motor_id, args.limit_margin)
             # Twice the predicted shift: the prediction assumes the commanded kd and kp are
@@ -202,7 +200,6 @@ def main():
                 print("Use one-sided --vel-targets if only one direction has room; the fit needs "
                       "a span, not both signs.")
                 return 1
-        print()
 
         for rep in range(args.repeats):
             for vt in args.vel_targets:
@@ -232,7 +229,7 @@ def main():
             w.writerow(["repeat", "vel_target", "t_s", "vel_cmd_now", "pos_target",
                         "pos_rad", "vel_rad_s", "torque_nm", "temp_c", "mode"])
             w.writerows(rows)
-        print(f"\nWrote {len(rows)} samples to {out}")
+        print(f"Saved: {out} ({len(rows)} samples)")
         print(f"Analyze: python3 {os.path.join(os.path.dirname(os.path.abspath(__file__)), 'analyze_kd.py')} {out}")
     return 0
 

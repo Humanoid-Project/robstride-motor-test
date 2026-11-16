@@ -72,10 +72,7 @@ def confirm(args, model):
     print(f"Motor: ID {args.motor_id}, {model.upper()}, {args.channel}")
     print(f"Commanded kp {args.kp}, kd {args.kd}")
     print(f"Offsets: {args.offsets_deg} deg x {args.repeats}")
-    print()
-    print("Feet on the ground is fine: kp is the slope of (error, torque) at rest, and an")
-    print("external load moves where the joint settles, not the slope. Keep it still while")
-    print("sampling. Suspend the robot only if you also want an external torque-scale check.")
+    print("NOTE: Feet on the ground are fine; keep the joint still while sampling.")
     print("WARNING: Verify zero calibration, secure the robot, and prepare the E-stop.")
     if not sys.stdin.isatty():
         print("ERROR: Run this command in an interactive terminal.")
@@ -168,7 +165,7 @@ def main():
                 print("Move the joint nearer the middle of its range, or pass smaller --offsets-deg.")
                 return 1
         print(f"Ramp rate {args.ramp_rate} rad/s: a {max(abs(o) for o in args.offsets_deg):.0f} deg "
-              f"step takes {math.radians(max(abs(o) for o in args.offsets_deg))/args.ramp_rate:.2f} s\n")
+              f"step takes {math.radians(max(abs(o) for o in args.offsets_deg))/args.ramp_rate:.2f} s")
 
         for rep in range(args.repeats):
             for off in args.offsets_deg:
@@ -199,7 +196,7 @@ def main():
             w.writerow(["repeat", "offset_deg", "target_rad", "pos_rad", "vel_rad_s",
                         "torque_nm", "temp_c"])
             w.writerows(rows)
-        print(f"\nWrote {len(rows)} samples to {out}")
+        print(f"Saved: {out} ({len(rows)} samples)")
         print(f"Analyze: python3 {os.path.join(os.path.dirname(os.path.abspath(__file__)), 'analyze_kp.py')} {out}")
     return 0
 

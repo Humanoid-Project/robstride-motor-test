@@ -60,7 +60,6 @@ def main():
 
     print(f"{'ID':>3} {'ch':>4} {'n':>6} {'ok':>6} {'miss':>5} {'ok%':>6} "
           f"{'mean Hz':>8} {'mean dt':>10} {'dt std':>14} {'max dt':>10}")
-    print("-" * 92)
     per_channel_ok = defaultdict(int)
     per_channel_span = {}
     for motor_id in sorted(by_motor):
@@ -91,14 +90,12 @@ def main():
             print(f"{motor_id:>3} {ch:>4} {n:>6} {n_ok:>6} {n_miss:>5}  "
                   f"(fewer than 2 valid samples)")
 
-    print("\nChannel throughput:")
     for ch in sorted(per_channel_ok):
         lo, hi = per_channel_span[ch]
         span = hi - lo
         if span > 0:
-            print(f"  {ch}: {per_channel_ok[ch]} valid samples / {span:.2f}s "
+            print(f"{ch} total: {per_channel_ok[ch]} valid samples / {span:.2f}s "
                   f"= {per_channel_ok[ch]/span:.1f} Hz total")
-    print("Per-motor update rate decreases as more motors share a channel.")
     return 0
 
 

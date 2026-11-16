@@ -367,7 +367,7 @@ def main():
     try:
         return args.handler(args)
     except (MotorIdError, SelectionError) as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        print(f"ERROR: {exc}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
         print("\nInterrupted.", file=sys.stderr)

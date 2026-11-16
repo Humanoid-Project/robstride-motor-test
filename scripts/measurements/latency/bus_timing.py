@@ -586,7 +586,6 @@ def capture(args, out):
             for motor in motors:
                 bench.set_command(motor, pos=references[motor.motor_id], kp=args.kp, kd=args.kd)
         drain(bus)
-        print()
         bus.load_start_mono = time.monotonic()
         try:
             run_cycles(bench, rows, references)
@@ -616,7 +615,7 @@ def capture(args, out):
 
     if rows or bus.load_start_mono is not None:
         write_csv(out, args, bench, rows, reason, references)
-        print(f"\nWrote {len(rows)} exchanges ({bench.counts['cycles']} cycles) to {out}")
+        print(f"Saved: {out} ({len(rows)} exchanges, {bench.counts['cycles']} cycles)")
         bad = {k: v for k, v in bench.counts.items() if v and k not in ("cycles", "exchanges")}
         if bad:
             print(f"Frame bookkeeping: {bad}")

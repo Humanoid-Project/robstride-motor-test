@@ -206,15 +206,14 @@ def capture_once(args, torque, run_index):
         if initial_pos is None:
             print(f"ERROR: Motor ID {args.motor_id} did not reply on {args.channel}.")
             return 1, None, "no_response"
-        print(f"Position: {initial_pos:+.4f} rad ({math.degrees(initial_pos):+.2f} deg)")
-
         fault_reg = motor.read_param(FAULT_STA_INDEX, fmt="<I", timeout=0.3)
         if fault_reg is None:
             print("WARNING: Fault register 0x3022 could not be read.")
+            fault_text = "unread"
         else:
             bits = decode_fault_bits(fault_reg)
-            print(f"Fault register: 0x{fault_reg:08X}" +
-                  (f" ({', '.join(bits)})" if bits else " (OK)"))
+            fault_text = f"0x{fault_reg:08X}" + (f" ({', '.join(bits)})" if bits else " (OK)")
+        print(f"Position: {math.degrees(initial_pos):+.2f} deg, fault {fault_text}")
 
         if not arm_can_watchdog(motor, args.can_timeout_ms):
             return 1, None, "watchdog_not_armed"
@@ -224,7 +223,6 @@ def capture_once(args, torque, run_index):
         motor.enable()
         time.sleep(0.01)
 
-        print("Waiting for the motor to settle...")
         pos_start = wait_settled(motor, initial_pos, args)
         if pos_start is None:
             print("ERROR: The motor did not settle before the safety timeout.")
@@ -240,7 +238,7 @@ def capture_once(args, torque, run_index):
                   f"+-{POSITION_DOMAIN_RAD:.2f} rad feedback range; turn the output nearer 0.")
             motor.stop()
             return 1, None, "position_domain"
-        print(f"Settled at {pos_start:+.4f} rad. Applying torque...")
+        print(f"Settled at {pos_start:+.4f} rad; applying torque")
 
         rows, stop_reason, fault_count = run_capture(motor, args.torque, pos_start, args)
     except KeyboardInterrupt:
@@ -250,10 +248,9 @@ def capture_once(args, torque, run_index):
         steps = [active_brake]
         if pos_start is not None and stop_reason in {"max_time", "max_vel", "max_turns"}:
             def return_home(m):
-                print(f"Returning to the start position {pos_start:+.4f} rad...")
                 final = return_to_position(m, pos_start)
-                print("Return position: unknown (no feedback)" if final is None
-                      else f"Return position: {final:+.4f} rad ({math.degrees(final):+.2f} deg)")
+                print("WARNING: Return position unknown (no feedback)." if final is None
+                      else f"Returned to {final:+.4f} rad (start {pos_start:+.4f} rad)")
             steps.append(return_home)
         shutdown_motor(motor, bus, tuple(steps))
 
@@ -331,7 +328,7 @@ def main():
             time.sleep(PAUSE_S)
 
     if paths:
-        print("\nAnalyzing captured CSV files...")
+        print()
         analysis = subprocess.run([sys.executable, ANALYZE, *paths])
         failed = failed or analysis.returncode != 0
     return 1 if failed or not paths else 0

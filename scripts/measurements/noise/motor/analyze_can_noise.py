@@ -74,7 +74,6 @@ def main():
 
     print(f"{'ID':>3} {'joint':<18} {'n':>6} "
           f"{'pos mean':>13} {'pos std':>16} {'pos p-p':>13} {'vel std':>18}")
-    print("-" * 104)
     for motor_id in sorted(by_motor):
         rows = by_motor[motor_id]
         pos = stats([float(r["pos_rad"]) for r in rows])
@@ -87,7 +86,6 @@ def main():
         first_last_gap = abs(float(rows[-1]["pos_rad"]) - float(rows[0]["pos_rad"]))
         if pos["std"] > 0 and first_last_gap > 5 * pos["std"]:
             print(drift_flag)
-    print("Noise includes encoder noise, CAN timing jitter, and physical settling motion.")
     return 0
 
 
