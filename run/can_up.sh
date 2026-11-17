@@ -199,6 +199,12 @@ done
 
 FAIL=0
 for c in "${CHANNELS[@]}"; do
+  if [ "$DRY" = 0 ]; then
+    for _ in $(seq 20); do
+      [ "$(cat "$SYSFS/$c/operstate" 2>/dev/null)" = "up" ] && break
+      sleep 0.1
+    done
+  fi
   can_state=$(ip -details link show "$c" 2>/dev/null | grep -o 'can state [A-Z-]*')
   echo "  $c: $(cat "$SYSFS/$c/operstate" 2>/dev/null), ${can_state:-no can state} (${GROUPS_OF[$c]:-not in the bus map})"
   case "$can_state" in
