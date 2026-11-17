@@ -31,7 +31,7 @@ DEFAULT_INTERVAL = 0.1
 LEG_IDS = tuple(range(1, 13))
 FIX_LEG_IDS = {"left": tuple(range(1, 7)), "right": tuple(range(7, 13))}
 HOLD_TARGET = 0.0
-EDGE_SLACK = math.radians(2.0)
+EDGE_SLACK = math.radians(4.0)
 APPROACH_SPEED = 0.3
 APPROACH_KP = 15.0
 APPROACH_KD = 3.0
@@ -70,6 +70,8 @@ def parse_args(argv=None):
                         help="Hold this whole leg at its hold targets for the entire run and never measure it; "
                              "all 12 leg motors are powered and only the selected IDs are measured "
                              "(default set: the other leg's six motors)")
+    parser.add_argument("--start-id", type=int, choices=LEG_IDS, default=None, metavar="ID",
+                        help="Resume: measure the leg motors from this ID upward while all 12 leg motors are held")
     add_can_timeout_option(parser)
     parser.set_defaults(
         interface=DEFAULT_INTERFACE, host_id=HOST_ID,
@@ -627,7 +629,7 @@ class EnterKey:
 
 
 def powered_ids(args, order):
-    held = set(LEG_IDS) if getattr(args, "fix", None) else set()
+    held = set(LEG_IDS) if getattr(args, "fix", None) or getattr(args, "start_id", None) else set()
     return sorted(set(order) | set(getattr(args, "fixed_ids", ())) | held)
 
 
@@ -638,6 +640,8 @@ def confirm_hold(args, order):
     if fixed:
         print(f"Fixed: {args.fix} leg {fixed}, held for the whole run and never measured")
         print(f"Held while not measured: {[i for i in powered if i not in fixed]}")
+    elif len(powered) > len(order):
+        print(f"Held for the whole run, not measured: {[i for i in powered if i not in order]}")
     print("Channels: " + ", ".join(f"{name} {[i for i in powered if channel_for_id(i) == name]}"
                                    for name in sorted({channel_for_id(i) for i in powered})))
     print(f"Hold: every motor of the set except the measured one is held at {math.degrees(HOLD_TARGET):+.1f} deg "
@@ -774,17 +778,25 @@ def default_ids(passive):
 
 def main(argv=None):
     args = parse_args(argv)
-    if args.fix and args.passive:
-        print("ERROR: --fix holds motors and cannot be combined with --passive")
+    if (args.fix or args.start_id) and args.passive:
+        print("ERROR: --fix and --start-id hold motors and cannot be combined with --passive")
+        return 1
+    if args.start_id and args.motor_id is not None:
+        print("ERROR: use either --start-id or --motor-id")
         return 1
     args.fixed_ids = FIX_LEG_IDS[args.fix] if args.fix else ()
     if args.motor_id is not None:
         requested = args.motor_id
+    elif args.start_id:
+        requested = [i for i in LEG_IDS if i >= args.start_id and i not in args.fixed_ids]
     elif args.fix:
         requested = [i for i in LEG_IDS if i not in args.fixed_ids]
     else:
         requested = default_ids(args.passive)
     motor_ids = sorted(set(requested))
+    if not motor_ids:
+        print("ERROR: no motor left to measure")
+        return 1
     clash = [i for i in motor_ids if i in args.fixed_ids]
     if clash:
         print(f"ERROR: IDs {clash} belong to the fixed {args.fix} leg and cannot be measured")

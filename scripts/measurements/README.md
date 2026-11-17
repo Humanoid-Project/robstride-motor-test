@@ -464,12 +464,13 @@ python3 scripts/measurements/joint/read_joint_values.py \
 
 ### `scan_joint_limits.py`
 
-Measures one motor at a time in ascending ID order while every other selected motor holds 0 at its deploy gains (where 0 is a limit edge, today the knees, the run stops 2 deg past that edge); Enter saves the CSV row, counts down, returns the motor to 0 and releases the next. `--passive` reads all selected motors at once without enabling any.
+Measures one motor at a time in ascending ID order while every other selected motor holds 0 at its deploy gains (where 0 is a limit edge, today the knees, the run stops 4 deg past that edge); Enter saves the CSV row, counts down, returns the motor to 0 and releases the next. `--passive` reads all selected motors at once without enabling any.
 
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |
 | - | `--motor-id`, `--motor-ids` | `1`-`12` (`--passive`: all motors) | Select motors to scan |
 | - | `--passive` | Off | Read-only scan, no motor enabled |
+| - | `--start-id` | - | Resume: measure the leg motors from this ID upward while all 12 are held |
 | - | `--fix` | - | Hold the `left` or `right` leg for the whole run without measuring it; all 12 leg motors are powered and only the selected IDs are measured (default set: the other leg) |
 | - | `--can-timeout-ms` | `1000` | Motor CAN watchdog for this run (`0` disables, max `5000`) |
 
@@ -480,6 +481,8 @@ python3 scripts/measurements/joint/scan_joint_limits.py
 python3 scripts/measurements/joint/scan_joint_limits.py --motor-id 1 2 3
 
 python3 scripts/measurements/joint/scan_joint_limits.py --fix left
+
+python3 scripts/measurements/joint/scan_joint_limits.py --start-id 2
 
 python3 scripts/measurements/joint/scan_joint_limits.py --passive --motor-id 5 6
 ```
