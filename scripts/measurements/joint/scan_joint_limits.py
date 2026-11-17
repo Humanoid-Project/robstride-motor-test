@@ -29,6 +29,7 @@ DEFAULT_TIMEOUT = 0.1
 DEFAULT_INTERVAL = 0.1
 
 LEG_IDS = tuple(range(1, 13))
+FIX_LEG_IDS = {"left": tuple(range(1, 7)), "right": tuple(range(7, 13))}
 HOLD_TARGET = 0.0
 HOLD_INSET = math.radians(3.0)
 APPROACH_SPEED = 0.3
@@ -64,6 +65,9 @@ def parse_args(argv=None):
                              "with --passive every motor)")
     parser.add_argument("--passive", action="store_true",
                         help="Read-only scan of all selected motors at once (MECH_POS); never enables a motor")
+    parser.add_argument("--fix", choices=sorted(FIX_LEG_IDS), default=None,
+                        help="Hold this whole leg at its hold targets for the entire run and never measure it "
+                             "(default set: the other leg's six motors)")
     add_can_timeout_option(parser)
     parser.set_defaults(
         interface=DEFAULT_INTERFACE, host_id=HOST_ID,
@@ -598,13 +602,17 @@ class EnterKey:
 
 
 def confirm_hold(args, order):
+    fixed = list(getattr(args, "fixed_ids", ()))
+    powered = sorted(set(order) | set(fixed))
     print(f"Motors: {order}, measured one at a time in this order")
-    print("Channels: " + ", ".join(f"{name} {[i for i in order if channel_for_id(i) == name]}"
-                                   for name in sorted({channel_for_id(i) for i in order})))
+    if fixed:
+        print(f"Fixed: {args.fix} leg {fixed}, held for the whole run and never measured")
+    print("Channels: " + ", ".join(f"{name} {[i for i in powered if channel_for_id(i) == name]}"
+                                   for name in sorted({channel_for_id(i) for i in powered})))
     print(f"Hold: every motor of the set except the measured one is held at its hold target "
           f"({math.degrees(HOLD_TARGET):+.1f} deg, or {math.degrees(HOLD_INSET):.0f} deg inside the limit margin "
           "when 0 is not) with its deploy gains:")
-    for i in order:
+    for i in powered:
         kp, kd = deploy_gains(i)
         lo, hi = JOINT_LIMITS_RAD[i]
         print(f"  ID {i:>2}  {JOINT_MAP.get(i, '?'):<18}  hold {math.degrees(hold_target(i, args.limit_margin)):+.1f} deg  "
@@ -615,7 +623,7 @@ def confirm_hold(args, order):
           f"{COUNTDOWN_S} s countdown it ramps back to its hold target and the next motor is released.")
     for i in order:
         partner = partner_ankle(i)
-        if partner is not None and partner not in order:
+        if partner is not None and partner not in powered:
             print(f"NOTE: ankle ID {i}'s partner {partner} is not in the set; it stays unpowered.")
     print("Angles are motor angles (knee and ankle: crank angles).")
     print(f"CAN watchdog: {args.can_timeout_ms} ms on every motor.")
@@ -696,7 +704,7 @@ def print_hold_summary(scan, aborted):
 
 
 def run_hold(args, order, enter=None):
-    channels = open_channels(args, order)
+    channels = open_channels(args, sorted(set(order) | set(getattr(args, "fixed_ids", ()))))
     aborted = True
     try:
         scan = HoldScan(channels, order, args, enter if enter is not None else EnterKey())
@@ -733,8 +741,21 @@ def default_ids(passive):
 
 def main(argv=None):
     args = parse_args(argv)
-    requested = args.motor_id if args.motor_id is not None else default_ids(args.passive)
+    if args.fix and args.passive:
+        print("ERROR: --fix holds motors and cannot be combined with --passive")
+        return 1
+    args.fixed_ids = FIX_LEG_IDS[args.fix] if args.fix else ()
+    if args.motor_id is not None:
+        requested = args.motor_id
+    elif args.fix:
+        requested = [i for i in LEG_IDS if i not in args.fixed_ids]
+    else:
+        requested = default_ids(args.passive)
     motor_ids = sorted(set(requested))
+    clash = [i for i in motor_ids if i in args.fixed_ids]
+    if clash:
+        print(f"ERROR: IDs {clash} belong to the fixed {args.fix} leg and cannot be measured")
+        return 1
     unknown = [motor_id for motor_id in motor_ids if motor_id not in JOINT_MAP]
     if unknown:
         print(f"ERROR: Unsupported motor IDs: {unknown}")
@@ -745,7 +766,8 @@ def main(argv=None):
     install_stop_signals()
     problems = [p for p in [can_timeout_problem(args)] if p]
     problems += [f"ID {i}: hold target {math.degrees(hold_target(i, args.limit_margin)):+.1f} deg is outside its joint limit"
-                 for i in motor_ids if exceeds_joint_limit(hold_target(i, args.limit_margin), i, args.limit_margin)]
+                 for i in sorted(set(motor_ids) | set(args.fixed_ids))
+                 if exceeds_joint_limit(hold_target(i, args.limit_margin), i, args.limit_margin)]
     if problems:
         print("Invalid arguments; nothing will run:")
         for problem in problems:
