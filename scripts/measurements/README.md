@@ -464,7 +464,7 @@ python3 scripts/measurements/joint/read_joint_values.py \
 
 ### `scan_joint_limits.py`
 
-Measures one motor at a time in ascending ID order while every other selected motor holds 0 at its deploy gains; Enter saves the CSV row, counts down, returns the motor to 0 and releases the next. `--passive` reads all selected motors at once without enabling any.
+Measures one motor at a time in ascending ID order while every other selected motor holds 0 at its deploy gains (a joint whose limit margin excludes 0, today the knees, holds 3 deg inside it); Enter saves the CSV row, counts down, returns the motor to its hold target and releases the next. `--passive` reads all selected motors at once without enabling any.
 
 | Command | Option | Default | Description |
 | --- | --- | --- | --- |

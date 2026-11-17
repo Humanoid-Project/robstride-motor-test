@@ -30,6 +30,7 @@ DEFAULT_INTERVAL = 0.1
 
 LEG_IDS = tuple(range(1, 13))
 HOLD_TARGET = 0.0
+HOLD_INSET = math.radians(3.0)
 APPROACH_SPEED = 0.3
 APPROACH_KP = 15.0
 APPROACH_KD = 3.0
@@ -286,6 +287,11 @@ def limit_excess(position, motor_id, margin):
     return max(0.0, lo - position, position - hi)
 
 
+def hold_target(motor_id, margin):
+    lo, hi = joint_limit_for(motor_id, margin)
+    return min(max(HOLD_TARGET, lo + HOLD_INSET), hi - HOLD_INSET)
+
+
 def ramp_problem(motor_id, start, target, margin):
     if start is None or not math.isfinite(start) or abs(start) > math.pi:
         return f"ID {motor_id} reads {format_deg(start).strip()} deg, outside +-180 deg (check zero_sta)"
@@ -340,7 +346,8 @@ class HoldScan:
         self.enter = enter
         self.motors = {m.motor_id: m for ch in channels for m in ch.motors}
         self.mode = {i: "brake" for i in self.motors}
-        self.target = {i: HOLD_TARGET for i in self.motors}
+        self.hold = {i: hold_target(i, args.limit_margin) for i in self.motors}
+        self.target = dict(self.hold)
         self.gains = {i: deploy_gains(i) for i in self.motors}
         self.ramps = {}
         self.enabled = False
@@ -423,10 +430,10 @@ class HoldScan:
 
     def start_ramp(self, motor_id):
         start = self.motors[motor_id].last_position
-        problem = ramp_problem(motor_id, start, HOLD_TARGET, self.args.limit_margin)
+        problem = ramp_problem(motor_id, start, self.hold[motor_id], self.args.limit_margin)
         if problem:
             raise Abort(f"ramp refused: {problem}")
-        self.ramps[motor_id] = Ramp(motor_id, start, HOLD_TARGET, self.args.limit_margin)
+        self.ramps[motor_id] = Ramp(motor_id, start, self.hold[motor_id], self.args.limit_margin)
         self.target[motor_id] = start
         self.mode[motor_id] = "ramp"
 
@@ -439,7 +446,7 @@ class HoldScan:
             if progress < 1.0 or (abs(error) > POSE_TOL and not late):
                 continue
             if abs(error) > POSE_TOL:
-                print(f"\nWARNING: ID {i} is {math.degrees(error):+.1f} deg from 0 after its ramp.")
+                print(f"\nWARNING: ID {i} is {math.degrees(error):+.1f} deg from its hold target after its ramp.")
             del self.ramps[i]
             self.target[i] = ramp.end
             self.mode[i] = "hold"
@@ -454,7 +461,7 @@ class HoldScan:
         if missing:
             raise Abort(f"no type 0x02 feedback from IDs {missing}; nothing moves")
         starts = {i: m.last_position for i, m in self.motors.items()}
-        problems = [ramp_problem(i, q, HOLD_TARGET, self.args.limit_margin) for i, q in starts.items()]
+        problems = [ramp_problem(i, q, self.hold[i], self.args.limit_margin) for i, q in starts.items()]
         problems += roll_status(starts, self.order[0])[0]
         problems = [p for p in problems if p]
         if problems:
@@ -497,12 +504,16 @@ class HoldScan:
         self.done.append((motor_id, lo, hi, self.samples))
         print("\n" + summary_line(motor_id, lo, hi, self.samples) + f"   saved to {self.csv_path}")
 
+    def hold_text(self, motor_id):
+        hold = self.hold[motor_id]
+        return "0" if hold == HOLD_TARGET else f"{math.degrees(hold):+.1f} deg"
+
     def give_back(self, motor_id):
         end = time.monotonic() + COUNTDOWN_S
         while time.monotonic() < end:
-            self.status = f"Returning ID {motor_id} to 0 in {math.ceil(end - time.monotonic())}..."
+            self.status = f"Returning ID {motor_id} to {self.hold_text(motor_id)} in {math.ceil(end - time.monotonic())}..."
             self.cycle()
-        self.status = f"Returning ID {motor_id} to 0."
+        self.status = f"Returning ID {motor_id} to {self.hold_text(motor_id)}."
         self.start_ramp(motor_id)
         while self.mode[motor_id] == "ramp":
             self.cycle()
@@ -590,17 +601,18 @@ def confirm_hold(args, order):
     print(f"Motors: {order}, measured one at a time in this order")
     print("Channels: " + ", ".join(f"{name} {[i for i in order if channel_for_id(i) == name]}"
                                    for name in sorted({channel_for_id(i) for i in order})))
-    print(f"Hold: every motor of the set except the measured one is held at {math.degrees(HOLD_TARGET):+.1f} deg "
-          "with its deploy gains:")
+    print(f"Hold: every motor of the set except the measured one is held at its hold target "
+          f"({math.degrees(HOLD_TARGET):+.1f} deg, or {math.degrees(HOLD_INSET):.0f} deg inside the limit margin "
+          "when 0 is not) with its deploy gains:")
     for i in order:
         kp, kd = deploy_gains(i)
         lo, hi = JOINT_LIMITS_RAD[i]
-        print(f"  ID {i:>2}  {JOINT_MAP.get(i, '?'):<18}  kp={kp:g} kd={kd:g}  "
-              f"limit {math.degrees(lo):+.1f}~{math.degrees(hi):+.1f} deg")
-    print(f"Ramps: from the current position to 0 at {APPROACH_SPEED} rad/s (kp={APPROACH_KP:g} kd={APPROACH_KD:g}), "
+        print(f"  ID {i:>2}  {JOINT_MAP.get(i, '?'):<18}  hold {math.degrees(hold_target(i, args.limit_margin)):+.1f} deg  "
+              f"kp={kp:g} kd={kd:g}  limit {math.degrees(lo):+.1f}~{math.degrees(hi):+.1f} deg")
+    print(f"Ramps: from the current position to the hold target at {APPROACH_SPEED} rad/s (kp={APPROACH_KP:g} kd={APPROACH_KD:g}), "
           "then the deploy gains.")
     print("The measured motor applies no torque (enabled, kp=kd=torque=0). Press Enter when it is done; after a "
-          f"{COUNTDOWN_S} s countdown it ramps back to 0 and the next motor is released.")
+          f"{COUNTDOWN_S} s countdown it ramps back to its hold target and the next motor is released.")
     for i in order:
         partner = partner_ankle(i)
         if partner is not None and partner not in order:
@@ -732,8 +744,8 @@ def main(argv=None):
 
     install_stop_signals()
     problems = [p for p in [can_timeout_problem(args)] if p]
-    problems += [f"ID {i}: hold target {math.degrees(HOLD_TARGET):+.1f} deg is outside its joint limit"
-                 for i in motor_ids if exceeds_joint_limit(HOLD_TARGET, i, args.limit_margin)]
+    problems += [f"ID {i}: hold target {math.degrees(hold_target(i, args.limit_margin)):+.1f} deg is outside its joint limit"
+                 for i in motor_ids if exceeds_joint_limit(hold_target(i, args.limit_margin), i, args.limit_margin)]
     if problems:
         print("Invalid arguments; nothing will run:")
         for problem in problems:
