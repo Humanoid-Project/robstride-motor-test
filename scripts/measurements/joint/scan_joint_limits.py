@@ -29,7 +29,7 @@ DEFAULT_TIMEOUT = 0.1
 DEFAULT_INTERVAL = 0.1
 
 LEG_IDS = tuple(range(1, 13))
-FIX_LEG_IDS = {"left": tuple(range(1, 7)), "right": tuple(range(7, 13))}
+LEGS = {"left": tuple(range(1, 7)), "right": tuple(range(7, 13))}
 HOLD_TARGET = 0.0
 EDGE_SLACK = math.radians(4.0)
 APPROACH_SPEED = 0.3
@@ -45,7 +45,6 @@ SETTLE_S = 2.0
 CONTROL_PERIOD = 0.005
 REPLY_TIMEOUT = 0.01
 RENDER_INTERVAL = 0.1
-COUNTDOWN_S = 2
 BRAKE_S = 0.3
 FEEDBACK_FAULT_NAMES = (
     "undervoltage", "overcurrent", "overtemperature", "magnetic encoder fault", "stall overload", "uncalibrated",
@@ -59,20 +58,16 @@ CSV_COLUMNS = [
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(
-        description="Measure joint ranges by hand. Default: one motor at a time while every other motor of the set is "
-                    "held at 0 with its deploy gains. --passive: the old read-only scan (no motor is enabled).")
+        description="Measure joint ranges by hand, one leg at a time: the six motors of the measured leg are "
+                    "released together while the other leg is held at 0 with its deploy gains. --passive: "
+                    "read-only scan (no motor is enabled).")
+    parser.add_argument("--leg", choices=sorted(LEGS), default=None,
+                        help="Leg to measure; the other leg is held at 0 for the whole run")
+    parser.add_argument("--passive", action="store_true",
+                        help="Read-only scan (MECH_POS); never enables a motor")
     parser.add_argument("--motor-id", "--motor-ids", dest="motor_id", nargs="+",
                         type=lambda v: int(v, 0), default=None,
-                        help="Motor IDs to scan, measured in ascending order (default: legs 1-12; "
-                             "with --passive every motor)")
-    parser.add_argument("--passive", action="store_true",
-                        help="Read-only scan of all selected motors at once (MECH_POS); never enables a motor")
-    parser.add_argument("--fix", choices=sorted(FIX_LEG_IDS), default=None,
-                        help="Hold this whole leg at its hold targets for the entire run and never measure it; "
-                             "all 12 leg motors are powered and only the selected IDs are measured "
-                             "(default set: the other leg's six motors)")
-    parser.add_argument("--start-id", type=int, choices=LEG_IDS, default=None, metavar="ID",
-                        help="Resume: measure the leg motors from this ID upward while all 12 leg motors are held")
+                        help="With --passive only: motor IDs to read (default: every motor)")
     add_can_timeout_option(parser)
     parser.set_defaults(
         interface=DEFAULT_INTERFACE, host_id=HOST_ID,
@@ -263,15 +258,7 @@ def deploy_gains(motor_id):
     return JOINT_CONTROL_GAINS[name]
 
 
-def partner_ankle(motor_id):
-    for upper_name, lower_name, _ in VER2_EDU.foot_roll.pairs:
-        ids = (JOINT_BY_MODEL_NAME[upper_name].motor_id, JOINT_BY_MODEL_NAME[lower_name].motor_id)
-        if motor_id in ids:
-            return ids[1] if ids[0] == motor_id else ids[0]
-    return None
-
-
-def roll_status(positions, measured):
+def roll_status(positions, measured, ramping=()):
     clip = VER2_EDU.foot_roll
     problems, warnings = [], []
     for upper_name, lower_name, sign in clip.pairs:
@@ -280,12 +267,13 @@ def roll_status(positions, measured):
         if upper not in positions or lower not in positions:
             continue
         roll = foot_roll(sign * positions[upper], sign * positions[lower], clip.coeffs)
-        if abs(roll) <= clip.limit - ROLL_MARGIN:
+        limit = clip.limit if upper in ramping or lower in ramping else clip.limit - ROLL_MARGIN
+        if abs(roll) <= limit:
             continue
         text = (f"foot roll {math.degrees(roll):+.1f} deg of IDs {upper}/{lower} exceeds "
-                f"{math.degrees(clip.limit - ROLL_MARGIN):.0f} deg")
-        if measured in (upper, lower):
-            warnings.append(f"WARNING: {text} (ankle ID {measured} is being measured; no abort)")
+                f"{math.degrees(limit):.0f} deg")
+        if upper in measured or lower in measured:
+            warnings.append(f"WARNING: {text} (IDs {upper}/{lower} are being measured; no abort)")
         else:
             problems.append(text)
     return problems, warnings
@@ -340,11 +328,11 @@ class Channel:
 
 
 class Ramp:
-    def __init__(self, motor_id, start, end, margin):
+    def __init__(self, motor_id, start, end, margin, duration=None):
         self.start = start
         self.end = end
         self.t0 = time.monotonic()
-        self.duration = max(0.5, abs(end - start) / APPROACH_SPEED)
+        self.duration = duration if duration is not None else max(0.5, abs(end - start) / APPROACH_SPEED)
         self.start_excess = limit_excess(start, motor_id, margin)
 
     def goal(self, now):
@@ -356,28 +344,25 @@ class Ramp:
 class Abort(Exception):
     pass
 
-
-class HoldScan:
-    def __init__(self, channels, order, args, enter):
+class LegScan:
+    def __init__(self, channels, measured, held, args, enter):
         self.channels = channels
-        self.order = order
+        self.measured = tuple(measured)
+        self.held = tuple(held)
         self.args = args
         self.enter = enter
         self.motors = {m.motor_id: m for ch in channels for m in ch.motors}
         self.mode = {i: "brake" for i in self.motors}
-        self.hold = {i: hold_target(i, args.limit_margin) for i in self.motors}
+        self.hold = {i: hold_target(i, args.limit_margin) for i in self.held}
         self.target = dict(self.hold)
-        self.gains = {i: deploy_gains(i) for i in self.motors}
+        self.gains = {i: deploy_gains(i) for i in self.held}
         self.ramps = {}
         self.settle = {}
         self.enabled = False
-        self.measured = None
-        self.phase = 0
         self.tracking = False
-        self.lo = self.hi = None
-        self.samples = 0
-        self.last_sample_time = 0.0
-        self.done = []
+        self.minmax = {i: (float("inf"), float("-inf")) for i in self.measured}
+        self.samples = {i: 0 for i in self.measured}
+        self.last_sample = {i: 0.0 for i in self.measured}
         self.status = ""
         self.warnings = []
         self.csv_path = None
@@ -406,12 +391,13 @@ class HoldScan:
         for ch in self.channels:
             ch.collect(t0)
         if self.tracking:
-            m = self.motors[self.measured]
-            if m.last_position is not None and m.last_feedback_time > self.last_sample_time:
-                self.last_sample_time = m.last_feedback_time
-                self.samples += 1
-                self.lo = m.last_position if self.lo is None else min(self.lo, m.last_position)
-                self.hi = m.last_position if self.hi is None else max(self.hi, m.last_position)
+            for i in self.measured:
+                m = self.motors[i]
+                if m.last_position is not None and m.last_feedback_time > self.last_sample[i]:
+                    self.last_sample[i] = m.last_feedback_time
+                    self.samples[i] += 1
+                    lo, hi = self.minmax[i]
+                    self.minmax[i] = (min(lo, m.last_position), max(hi, m.last_position))
         if guard:
             problem = self.guard()
             if problem:
@@ -453,17 +439,9 @@ class HoldScan:
                     return f"ID {i} at {math.degrees(m.last_position):+.1f} deg is outside its joint limit"
             else:
                 self.settle.pop(i, None)
-        problems, self.warnings = roll_status(positions, self.measured)
+        ramping = {i for i, mode in self.mode.items() if mode == "ramp"}
+        problems, self.warnings = roll_status(positions, self.measured, ramping)
         return problems[0] if problems else None
-
-    def start_ramp(self, motor_id):
-        start = self.motors[motor_id].last_position
-        problem = ramp_problem(motor_id, start, self.hold[motor_id], self.args.limit_margin)
-        if problem:
-            raise Abort(f"ramp refused: {problem}")
-        self.ramps[motor_id] = Ramp(motor_id, start, self.hold[motor_id], self.args.limit_margin)
-        self.target[motor_id] = start
-        self.mode[motor_id] = "ramp"
 
     def finish_ramps(self):
         now = time.monotonic()
@@ -474,7 +452,7 @@ class HoldScan:
             if progress < 1.0 or (abs(error) > POSE_TOL and not late):
                 continue
             if abs(error) > POSE_TOL:
-                print(f"\nWARNING: ID {i} is {math.degrees(error):+.1f} deg from its hold target after its ramp.")
+                print(f"\nWARNING: ID {i} is {math.degrees(error):+.1f} deg from 0 after its ramp.")
             del self.ramps[i]
             if ramp.start_excess > 0.0 and limit_excess(self.motors[i].last_position, i, self.args.limit_margin) > 0.0:
                 self.settle[i] = (ramp.start_excess, now + SETTLE_S)
@@ -491,25 +469,22 @@ class HoldScan:
         if missing:
             raise Abort(f"no type 0x02 feedback from IDs {missing}; nothing moves")
         starts = {i: m.last_position for i, m in self.motors.items()}
-        problems = [ramp_problem(i, q, self.hold[i], self.args.limit_margin) for i, q in starts.items()]
-        problems += roll_status(starts, self.order[0])[0]
+        problems = [ramp_problem(i, starts[i], self.hold[i], self.args.limit_margin) for i in self.held]
+        problems += roll_status(starts, self.measured)[0]
         problems = [p for p in problems if p]
         if problems:
             raise Abort("; ".join(problems) + "; nothing moves")
+        for i in self.measured:
+            self.mode[i] = "free"
+        duration = max(0.5, max(abs(self.hold[i] - starts[i]) for i in self.held) / APPROACH_SPEED)
+        for i in self.held:
+            self.ramps[i] = Ramp(i, starts[i], self.hold[i], self.args.limit_margin, duration)
+            self.target[i] = starts[i]
+            self.mode[i] = "ramp"
 
-    def measure(self, k, motor_id):
-        self.phase = k
-        self.measured = motor_id
-        self.ramps.pop(motor_id, None)
-        self.settle.pop(motor_id, None)
-        self.mode[motor_id] = "free"
-        for i in self.motors:
-            if i != motor_id and self.mode[i] not in ("hold", "ramp"):
-                self.start_ramp(i)
-        self.lo = self.hi = None
-        self.samples = 0
-        self.last_sample_time = 0.0
-        self.status = f"Move ID {motor_id} by hand through its range, then press Enter."
+    def run(self):
+        self.startup()
+        self.status = "Move every joint of the measured leg through its full range, then press Enter."
         self.enter.clear()
         self.tracking = True
         while not self.enter.is_set():
@@ -517,45 +492,20 @@ class HoldScan:
                 raise Abort("stdin closed")
             self.cycle()
         self.tracking = False
-        self.record(k, motor_id)
-
-    def record(self, k, motor_id):
-        lo = self.lo if self.lo is not None else float("inf")
-        hi = self.hi if self.hi is not None else float("-inf")
-        held = sorted(i for i in self.motors if i != motor_id)
-        row = csv_row(motor_id, lo, hi, self.samples) + [k + 1, " ".join(str(i) for i in held)]
-        new = self.csv_path is None
-        if new:
-            self.csv_path = new_csv_path()
-        with open(self.csv_path, "a", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            if new:
-                writer.writerow(CSV_COLUMNS + ["order", "held_ids"])
-            writer.writerow(row)
-        self.done.append((motor_id, lo, hi, self.samples))
-        print("\n" + summary_line(motor_id, lo, hi, self.samples) + f"   saved to {self.csv_path}")
-
-    def hold_text(self, motor_id):
-        hold = self.hold[motor_id]
-        return "0" if hold == HOLD_TARGET else f"{math.degrees(hold):+.1f} deg"
-
-    def give_back(self, motor_id):
-        end = time.monotonic() + COUNTDOWN_S
-        while time.monotonic() < end:
-            self.status = f"Returning ID {motor_id} to {self.hold_text(motor_id)} in {math.ceil(end - time.monotonic())}..."
-            self.cycle()
-        self.status = f"Returning ID {motor_id} to {self.hold_text(motor_id)}."
-        self.start_ramp(motor_id)
-        while self.mode[motor_id] == "ramp":
-            self.cycle()
-
-    def run(self):
-        self.startup()
-        for k, motor_id in enumerate(self.order):
-            self.measure(k, motor_id)
-            self.give_back(motor_id)
-        self.status = "All motors measured."
+        self.record()
+        self.status = "Saved; braking and stopping every motor. Support the legs."
         self.maybe_render(force=True)
+
+    def record(self):
+        self.csv_path = new_csv_path()
+        leg = next(name for name, ids in LEGS.items() if ids == self.measured)
+        held = " ".join(str(i) for i in self.held)
+        with open(self.csv_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(CSV_COLUMNS + ["measured_leg", "held_ids"])
+            for i in self.measured:
+                lo, hi = self.minmax[i]
+                writer.writerow(csv_row(i, lo, hi, self.samples[i]) + [leg, held])
 
     def brake(self):
         self.ramps.clear()
@@ -576,31 +526,24 @@ class HoldScan:
         sys.stdout.flush()
 
     def screen(self):
-        m = self.measured
         lines = ["\033[2J\033[3J\033[H"]
-        lines.append(f"joint limit scan (hold)   {time.strftime('%H:%M:%S')}   phase {self.phase + 1}/{len(self.order)}"
-                     f"   measuring ID {m} ({JOINT_MAP.get(m, '?')})")
-        lines.append("Motor angles in deg (knee and ankle: crank angles). Ctrl-C releases, brakes and stops.\n")
+        lines.append(f"joint limit scan   {time.strftime('%H:%M:%S')}   measuring IDs {list(self.measured)}   "
+                     f"holding IDs {list(self.held)} at 0")
+        lines.append("Motor angles in deg (knee and ankle: crank angles). Ctrl-C brakes and stops.\n")
         lines.append(f"  {'ID':>3}  {'joint':<18}  {'current':>8}  {'min':>8}  {'max':>8}  "
                      f"{'span':>7}  {'defined limit':>18}  {'n':>6}")
         lines.append("  " + "-" * 88)
-        if m is not None:
-            lo = self.lo if self.lo is not None else float("inf")
-            hi = self.hi if self.hi is not None else float("-inf")
-            row = summary_line(m, lo, hi, self.samples)
-            lines.append(f"  {row[:23]}  {format_deg(self.motors[m].last_position):>8}{row[23:]}")
+        for i in self.measured:
+            lo, hi = self.minmax[i]
+            row = summary_line(i, lo, hi, self.samples[i])
+            lines.append(f"  {row[:23]}  {format_deg(self.motors[i].last_position):>8}{row[23:]}")
         lines.append("")
         lines.append(f"  {'ID':>3}  {'held joint':<18}  {'mode':<5}  {'target':>8}  {'pos':>8}  {'dev':>7}")
-        for i, motor in sorted(self.motors.items()):
-            if i == m:
-                continue
-            pos = motor.last_position
+        for i in self.held:
+            pos = self.motors[i].last_position
             dev = f"{math.degrees(pos - self.target[i]):+7.2f}" if pos is not None else f"{'--':>7}"
             lines.append(f"  {i:>3}  {JOINT_MAP.get(i, '?'):<18}  {self.mode[i]:<5}  "
                          f"{format_deg(self.target[i]):>8}  {format_deg(pos):>8}  {dev}")
-        if self.done:
-            lines.append("\nmeasured:")
-            lines.extend("  " + summary_line(*row) for row in self.done)
         lines.append("")
         lines.extend(self.warnings)
         lines.append(self.status)
@@ -629,44 +572,25 @@ class EnterKey:
         self.event.clear()
 
 
-def powered_ids(args, order):
-    held = set(LEG_IDS) if getattr(args, "fix", None) or getattr(args, "start_id", None) else set()
-    return sorted(set(order) | set(getattr(args, "fixed_ids", ())) | held)
-
-
-def confirm_hold(args, order):
-    fixed = list(getattr(args, "fixed_ids", ()))
-    powered = powered_ids(args, order)
-    print(f"Motors: {order}, measured one at a time in this order")
-    if fixed:
-        print(f"Fixed: {args.fix} leg {fixed}, held for the whole run and never measured")
-        print(f"Held while not measured: {[i for i in powered if i not in fixed]}")
-    elif len(powered) > len(order):
-        print(f"Held for the whole run, not measured: {[i for i in powered if i not in order]}")
-    print("Channels: " + ", ".join(f"{name} {[i for i in powered if channel_for_id(i) == name]}"
-                                   for name in sorted({channel_for_id(i) for i in powered})))
-    print(f"Hold: every motor of the set except the measured one is held at {math.degrees(HOLD_TARGET):+.1f} deg "
-          "with its deploy gains; where 0 is a limit edge (knees) a held motor may go "
-          f"{math.degrees(EDGE_SLACK):.0f} deg past that edge before the run stops:")
-    for i in powered:
+def confirm_hold(args, measured, held):
+    print(f"Measure: {args.leg} leg {list(measured)}, all six released together (kp=kd=torque=0)")
+    print(f"Hold: {list(held)} at 0 for the whole run with the deploy gains; all ramp to 0 together, the farthest at {APPROACH_SPEED} rad/s "
+          f"(kp={APPROACH_KP:g} kd={RAMP_KD:g}):")
+    for i in held:
         kp, kd = deploy_gains(i)
         lo, hi = JOINT_LIMITS_RAD[i]
         band_lo, band_hi = hold_band(i, args.limit_margin)
-        print(f"  ID {i:>2}  {JOINT_MAP.get(i, '?'):<18}  hold {math.degrees(hold_target(i, args.limit_margin)):+.1f} deg  "
-              f"kp={kp:g} kd={kd:g}  limit {math.degrees(lo):+.1f}~{math.degrees(hi):+.1f} deg  "
+        print(f"  ID {i:>2}  {JOINT_MAP.get(i, '?'):<18}  kp={kp:g} kd={kd:g}  "
+              f"limit {math.degrees(lo):+.1f}~{math.degrees(hi):+.1f} deg  "
               f"stop outside {math.degrees(band_lo):+.1f}~{math.degrees(band_hi):+.1f} deg")
-    print(f"Ramps: from the current position to the hold target at {APPROACH_SPEED} rad/s (kp={APPROACH_KP:g} kd={RAMP_KD:g}), "
-          "then the deploy gains.")
-    print("The measured motor applies no torque (enabled, kp=kd=torque=0). Press Enter when it is done; after a "
-          f"{COUNTDOWN_S} s countdown it ramps back to its hold target and the next motor is released.")
-    for i in order:
-        partner = partner_ankle(i)
-        if partner is not None and partner not in powered:
-            print(f"NOTE: ankle ID {i}'s partner {partner} is not in the set; it stays unpowered.")
+    print(f"Stops on: feedback loss, fault flags, a held motor faster than {args.max_vel:g} rad/s, "
+          f"{math.degrees(HOLD_TOL):.1f} deg off its target, outside its limit, or a held foot rolling past "
+          f"{math.degrees(VER2_EDU.foot_roll.limit - ROLL_MARGIN):.0f} deg.")
+    print("Press Enter when every joint of the measured leg has been moved through its range; the CSV is saved "
+          "and every motor brakes and stops.")
     print("Angles are motor angles (knee and ankle: crank angles).")
     print(f"CAN watchdog: {args.can_timeout_ms} ms on every motor.")
-    print("WARNING: The robot must hang on its stand with the feet off the ground, hands clear; "
-          "keep the E-stop in reach.")
+    print("WARNING: The robot must hang on its stand with the feet off the ground; keep the E-stop in reach.")
     if not sys.stdin.isatty():
         print("ERROR: Run this command in an interactive terminal.")
         return False
@@ -678,13 +602,13 @@ def confirm_hold(args, order):
     return True
 
 
-def open_channels(args, order):
+def open_channels(args, motor_ids):
     channels = []
     try:
-        for name in sorted({channel_for_id(i) for i in order}):
+        for name in sorted({channel_for_id(i) for i in motor_ids}):
             bus = can.Bus(channel=name, interface=args.interface)
             motors = [Motor(bus, i, SPECS[MOTOR_MODEL[i]], host_id=args.host_id)
-                      for i in order if channel_for_id(i) == name]
+                      for i in motor_ids if channel_for_id(i) == name]
             channels.append(Channel(name, bus, motors, args.host_id))
     except BaseException:
         for ch in channels:
@@ -727,25 +651,22 @@ def shutdown_all(channels):
         signal.signal(signal.SIGINT, previous)
 
 
-def print_hold_summary(scan, aborted):
+def print_leg_summary(scan, aborted):
     print(f"\n{'ID':>3}  {'joint':<18}  {'min':>8}  {'max':>8}  {'span':>7}  {'defined limit':>18}  {'n':>6}")
-    for row in scan.done:
-        print(summary_line(*row))
-    finished = [row[0] for row in scan.done]
-    if aborted and scan.measured is not None and scan.measured not in finished:
-        print(f"ID {scan.measured} was being measured when the run stopped (not saved): "
-              f"min {format_deg(scan.lo).strip()} max {format_deg(scan.hi).strip()} deg, n={scan.samples}")
-    left = [i for i in scan.order if i not in finished]
-    if left:
-        print(f"Not measured: {left}")
-    print(f"Saved: {scan.csv_path}" if scan.csv_path else "No CSV written (no motor finished).")
+    for i in scan.measured:
+        lo, hi = scan.minmax[i]
+        print(summary_line(i, lo, hi, scan.samples[i]))
+    if scan.csv_path:
+        print(f"Saved: {scan.csv_path}")
+    elif aborted:
+        print("Not saved (the run stopped before Enter).")
 
 
-def run_hold(args, order, enter=None):
-    channels = open_channels(args, powered_ids(args, order))
+def run_hold(args, measured, held, enter=None):
+    channels = open_channels(args, sorted(measured + held))
     aborted = True
     try:
-        scan = HoldScan(channels, order, args, enter if enter is not None else EnterKey())
+        scan = LegScan(channels, measured, held, args, enter if enter is not None else EnterKey())
         try:
             enable_all(scan, args)
             scan.run()
@@ -757,8 +678,6 @@ def run_hold(args, order, enter=None):
         except Exception as error:
             print(f"\nSTOP: {type(error).__name__}: {error}.")
         if scan.enabled:
-            if aborted:
-                print("Releasing holds and braking; no return move.")
             try:
                 scan.brake()
             except KeyboardInterrupt:
@@ -767,61 +686,42 @@ def run_hold(args, order, enter=None):
                 print(f"Brake failed ({error}); sending stop frames now.")
     finally:
         shutdown_all(channels)
-    print_hold_summary(scan, aborted)
+    print_leg_summary(scan, aborted)
     return 1 if aborted else 0
-
-
-def default_ids(passive):
-    if passive:
-        return sorted(JOINT_MAP)
-    return list(LEG_IDS)
 
 
 def main(argv=None):
     args = parse_args(argv)
-    if (args.fix or args.start_id) and args.passive:
-        print("ERROR: --fix and --start-id hold motors and cannot be combined with --passive")
-        return 1
-    if args.start_id and args.motor_id is not None:
-        print("ERROR: use either --start-id or --motor-id")
-        return 1
-    args.fixed_ids = FIX_LEG_IDS[args.fix] if args.fix else ()
-    if args.motor_id is not None:
-        requested = args.motor_id
-    elif args.start_id:
-        requested = [i for i in LEG_IDS if i >= args.start_id and i not in args.fixed_ids]
-    elif args.fix:
-        requested = [i for i in LEG_IDS if i not in args.fixed_ids]
-    else:
-        requested = default_ids(args.passive)
-    motor_ids = sorted(set(requested))
-    if not motor_ids:
-        print("ERROR: no motor left to measure")
-        return 1
-    clash = [i for i in motor_ids if i in args.fixed_ids]
-    if clash:
-        print(f"ERROR: IDs {clash} belong to the fixed {args.fix} leg and cannot be measured")
-        return 1
-    unknown = [motor_id for motor_id in motor_ids if motor_id not in JOINT_MAP]
-    if unknown:
-        print(f"ERROR: Unsupported motor IDs: {unknown}")
-        return 1
     if args.passive:
+        if args.leg:
+            print("ERROR: --leg enables motors and cannot be combined with --passive")
+            return 1
+        motor_ids = sorted(set(args.motor_id)) if args.motor_id is not None else sorted(JOINT_MAP)
+        unknown = [i for i in motor_ids if i not in JOINT_MAP]
+        if unknown:
+            print(f"ERROR: Unsupported motor IDs: {unknown}")
+            return 1
         return run_passive(args, motor_ids)
-
+    if args.motor_id is not None:
+        print("ERROR: --motor-id is for --passive only; use --leg left|right")
+        return 1
+    if not args.leg:
+        print("ERROR: choose the leg to measure with --leg left|right (or --passive)")
+        return 1
     install_stop_signals()
+    measured = LEGS[args.leg]
+    held = next(ids for name, ids in LEGS.items() if name != args.leg)
     problems = [p for p in [can_timeout_problem(args)] if p]
     problems += [f"ID {i}: hold target {math.degrees(hold_target(i, args.limit_margin)):+.1f} deg is outside its joint limit"
-                 for i in sorted(set(motor_ids) | set(args.fixed_ids))
-                 if limit_excess(hold_target(i, args.limit_margin), i, args.limit_margin) > 0.0]
+                 for i in held if limit_excess(hold_target(i, args.limit_margin), i, args.limit_margin) > 0.0]
     if problems:
         print("Invalid arguments; nothing will run:")
         for problem in problems:
             print(f"  {problem}")
         return 1
-    if not confirm_hold(args, motor_ids):
+    if not confirm_hold(args, measured, held):
         return 1
-    return run_hold(args, motor_ids)
+    return run_hold(args, measured, held)
 
 
 if __name__ == "__main__":
