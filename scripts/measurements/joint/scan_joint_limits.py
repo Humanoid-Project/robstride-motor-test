@@ -33,8 +33,9 @@ FIX_LEG_IDS = {"left": tuple(range(1, 7)), "right": tuple(range(7, 13))}
 HOLD_TARGET = 0.0
 EDGE_SLACK = math.radians(4.0)
 APPROACH_SPEED = 0.3
-APPROACH_KP = 15.0
+APPROACH_KP = 40.0
 APPROACH_KD = 3.0
+RAMP_KD = 2.0
 POSE_TOL = math.radians(2.0)
 HOLD_TOL = 0.10
 APPROACH_TOL = 0.20
@@ -390,7 +391,7 @@ class HoldScan:
         elif mode == "ramp":
             goal, _ = self.ramps[i].goal(now)
             self.target[i] = goal
-            motor.control(pos=goal, vel=0.0, kp=APPROACH_KP, kd=APPROACH_KD, torque=0.0)
+            motor.control(pos=goal, vel=0.0, kp=APPROACH_KP, kd=RAMP_KD, torque=0.0)
         elif mode == "hold":
             kp, kd = self.gains[i]
             motor.control(pos=self.target[i], vel=0.0, kp=kp, kd=kd, torque=0.0)
@@ -654,7 +655,7 @@ def confirm_hold(args, order):
         print(f"  ID {i:>2}  {JOINT_MAP.get(i, '?'):<18}  hold {math.degrees(hold_target(i, args.limit_margin)):+.1f} deg  "
               f"kp={kp:g} kd={kd:g}  limit {math.degrees(lo):+.1f}~{math.degrees(hi):+.1f} deg  "
               f"stop outside {math.degrees(band_lo):+.1f}~{math.degrees(band_hi):+.1f} deg")
-    print(f"Ramps: from the current position to the hold target at {APPROACH_SPEED} rad/s (kp={APPROACH_KP:g} kd={APPROACH_KD:g}), "
+    print(f"Ramps: from the current position to the hold target at {APPROACH_SPEED} rad/s (kp={APPROACH_KP:g} kd={RAMP_KD:g}), "
           "then the deploy gains.")
     print("The measured motor applies no torque (enabled, kp=kd=torque=0). Press Enter when it is done; after a "
           f"{COUNTDOWN_S} s countdown it ramps back to its hold target and the next motor is released.")
