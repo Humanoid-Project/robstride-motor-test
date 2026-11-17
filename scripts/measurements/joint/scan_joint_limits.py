@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common import (
     DEFAULT_INTERFACE, DEFAULT_LIMIT_MARGIN_RAD, HOST_ID, JOINT_MAP, JOINT_LIMITS_RAD, MECH_POS_INDEX, MOTOR_MODEL,
     RUN_MODE_INDEX, RUN_MODE_OPERATION, SPECS, Motor, add_can_timeout_option, arm_can_watchdog, can_timeout_problem,
-    channel_for_id, disarm_can_watchdog, exceeds_joint_limit, install_stop_signals, joint_limit_for,
+    channel_for_id, disarm_can_watchdog, install_stop_signals, joint_limit_for,
 )
 from robonex_common.can import FeedbackHub
 from robonex_common.foot_roll import foot_roll
@@ -31,7 +31,7 @@ DEFAULT_INTERVAL = 0.1
 LEG_IDS = tuple(range(1, 13))
 FIX_LEG_IDS = {"left": tuple(range(1, 7)), "right": tuple(range(7, 13))}
 HOLD_TARGET = 0.0
-HOLD_INSET = math.radians(3.0)
+EDGE_SLACK = math.radians(2.0)
 APPROACH_SPEED = 0.3
 APPROACH_KP = 15.0
 APPROACH_KD = 3.0
@@ -288,20 +288,30 @@ def roll_status(positions, measured):
     return problems, warnings
 
 
-def limit_excess(position, motor_id, margin):
+def hold_band(motor_id, margin):
     lo, hi = joint_limit_for(motor_id, margin)
+    edge_lo, edge_hi = joint_limit_for(motor_id, 0.0)
+    if HOLD_TARGET <= lo and edge_lo <= HOLD_TARGET:
+        lo = edge_lo - EDGE_SLACK
+    if HOLD_TARGET >= hi and HOLD_TARGET <= edge_hi:
+        hi = edge_hi + EDGE_SLACK
+    return lo, hi
+
+
+def limit_excess(position, motor_id, margin):
+    lo, hi = hold_band(motor_id, margin)
     return max(0.0, lo - position, position - hi)
 
 
 def hold_target(motor_id, margin):
-    lo, hi = joint_limit_for(motor_id, margin)
-    return min(max(HOLD_TARGET, lo + HOLD_INSET), hi - HOLD_INSET)
+    lo, hi = hold_band(motor_id, margin)
+    return min(max(HOLD_TARGET, lo), hi)
 
 
 def ramp_problem(motor_id, start, target, margin):
     if start is None or not math.isfinite(start) or abs(start) > math.pi:
         return f"ID {motor_id} reads {format_deg(start).strip()} deg, outside +-180 deg (check zero_sta)"
-    if exceeds_joint_limit(target, motor_id, margin):
+    if limit_excess(target, motor_id, margin) > 0.0:
         return f"ID {motor_id} target {math.degrees(target):+.1f} deg is outside its joint limit"
     return None
 
@@ -427,9 +437,9 @@ class HoldScan:
             tol = APPROACH_TOL if mode == "ramp" else HOLD_TOL
             if abs(m.last_position - self.target[i]) > tol:
                 return f"ID {i} left its target by {math.degrees(m.last_position - self.target[i]):+.1f} deg"
-            if exceeds_joint_limit(m.last_position, i, self.args.limit_margin):
+            excess = limit_excess(m.last_position, i, self.args.limit_margin)
+            if excess > 0.0:
                 ramp = self.ramps.get(i) if mode == "ramp" else None
-                excess = limit_excess(m.last_position, i, self.args.limit_margin)
                 if ramp is not None:
                     allowed = ramp.start_excess
                 elif mode == "hold" and i in self.settle and now < self.settle[i][1]:
@@ -630,14 +640,16 @@ def confirm_hold(args, order):
         print(f"Held while not measured: {[i for i in powered if i not in fixed]}")
     print("Channels: " + ", ".join(f"{name} {[i for i in powered if channel_for_id(i) == name]}"
                                    for name in sorted({channel_for_id(i) for i in powered})))
-    print(f"Hold: every motor of the set except the measured one is held at its hold target "
-          f"({math.degrees(HOLD_TARGET):+.1f} deg, or {math.degrees(HOLD_INSET):.0f} deg inside the limit margin "
-          "when 0 is not) with its deploy gains:")
+    print(f"Hold: every motor of the set except the measured one is held at {math.degrees(HOLD_TARGET):+.1f} deg "
+          "with its deploy gains; where 0 is a limit edge (knees) a held motor may go "
+          f"{math.degrees(EDGE_SLACK):.0f} deg past that edge before the run stops:")
     for i in powered:
         kp, kd = deploy_gains(i)
         lo, hi = JOINT_LIMITS_RAD[i]
+        band_lo, band_hi = hold_band(i, args.limit_margin)
         print(f"  ID {i:>2}  {JOINT_MAP.get(i, '?'):<18}  hold {math.degrees(hold_target(i, args.limit_margin)):+.1f} deg  "
-              f"kp={kp:g} kd={kd:g}  limit {math.degrees(lo):+.1f}~{math.degrees(hi):+.1f} deg")
+              f"kp={kp:g} kd={kd:g}  limit {math.degrees(lo):+.1f}~{math.degrees(hi):+.1f} deg  "
+              f"stop outside {math.degrees(band_lo):+.1f}~{math.degrees(band_hi):+.1f} deg")
     print(f"Ramps: from the current position to the hold target at {APPROACH_SPEED} rad/s (kp={APPROACH_KP:g} kd={APPROACH_KD:g}), "
           "then the deploy gains.")
     print("The measured motor applies no torque (enabled, kp=kd=torque=0). Press Enter when it is done; after a "
@@ -788,7 +800,7 @@ def main(argv=None):
     problems = [p for p in [can_timeout_problem(args)] if p]
     problems += [f"ID {i}: hold target {math.degrees(hold_target(i, args.limit_margin)):+.1f} deg is outside its joint limit"
                  for i in sorted(set(motor_ids) | set(args.fixed_ids))
-                 if exceeds_joint_limit(hold_target(i, args.limit_margin), i, args.limit_margin)]
+                 if limit_excess(hold_target(i, args.limit_margin), i, args.limit_margin) > 0.0]
     if problems:
         print("Invalid arguments; nothing will run:")
         for problem in problems:
