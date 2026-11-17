@@ -67,7 +67,8 @@ def parse_args(argv=None):
     parser.add_argument("--passive", action="store_true",
                         help="Read-only scan of all selected motors at once (MECH_POS); never enables a motor")
     parser.add_argument("--fix", choices=sorted(FIX_LEG_IDS), default=None,
-                        help="Hold this whole leg at its hold targets for the entire run and never measure it "
+                        help="Hold this whole leg at its hold targets for the entire run and never measure it; "
+                             "all 12 leg motors are powered and only the selected IDs are measured "
                              "(default set: the other leg's six motors)")
     add_can_timeout_option(parser)
     parser.set_defaults(
@@ -615,12 +616,18 @@ class EnterKey:
         self.event.clear()
 
 
+def powered_ids(args, order):
+    held = set(LEG_IDS) if getattr(args, "fix", None) else set()
+    return sorted(set(order) | set(getattr(args, "fixed_ids", ())) | held)
+
+
 def confirm_hold(args, order):
     fixed = list(getattr(args, "fixed_ids", ()))
-    powered = sorted(set(order) | set(fixed))
+    powered = powered_ids(args, order)
     print(f"Motors: {order}, measured one at a time in this order")
     if fixed:
         print(f"Fixed: {args.fix} leg {fixed}, held for the whole run and never measured")
+        print(f"Held while not measured: {[i for i in powered if i not in fixed]}")
     print("Channels: " + ", ".join(f"{name} {[i for i in powered if channel_for_id(i) == name]}"
                                    for name in sorted({channel_for_id(i) for i in powered})))
     print(f"Hold: every motor of the set except the measured one is held at its hold target "
@@ -718,7 +725,7 @@ def print_hold_summary(scan, aborted):
 
 
 def run_hold(args, order, enter=None):
-    channels = open_channels(args, sorted(set(order) | set(getattr(args, "fixed_ids", ()))))
+    channels = open_channels(args, powered_ids(args, order))
     aborted = True
     try:
         scan = HoldScan(channels, order, args, enter if enter is not None else EnterKey())

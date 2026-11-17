@@ -470,7 +470,7 @@ Measures one motor at a time in ascending ID order while every other selected mo
 | --- | --- | --- | --- |
 | - | `--motor-id`, `--motor-ids` | `1`-`12` (`--passive`: all motors) | Select motors to scan |
 | - | `--passive` | Off | Read-only scan, no motor enabled |
-| - | `--fix` | - | Hold the `left` or `right` leg for the whole run without measuring it (default set: the other leg) |
+| - | `--fix` | - | Hold the `left` or `right` leg for the whole run without measuring it; all 12 leg motors are powered and only the selected IDs are measured (default set: the other leg) |
 | - | `--can-timeout-ms` | `1000` | Motor CAN watchdog for this run (`0` disables, max `5000`) |
 
 ```bash
