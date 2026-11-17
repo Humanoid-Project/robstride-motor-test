@@ -40,6 +40,7 @@ HOLD_TOL = 0.10
 APPROACH_TOL = 0.20
 ROLL_MARGIN = math.radians(1.0)
 LIMIT_SLACK = math.radians(2.0)
+SETTLE_S = 2.0
 CONTROL_PERIOD = 0.005
 REPLY_TIMEOUT = 0.01
 RENDER_INTERVAL = 0.1
@@ -354,6 +355,7 @@ class HoldScan:
         self.target = dict(self.hold)
         self.gains = {i: deploy_gains(i) for i in self.motors}
         self.ramps = {}
+        self.settle = {}
         self.enabled = False
         self.measured = None
         self.phase = 0
@@ -427,8 +429,16 @@ class HoldScan:
             if exceeds_joint_limit(m.last_position, i, self.args.limit_margin):
                 ramp = self.ramps.get(i) if mode == "ramp" else None
                 excess = limit_excess(m.last_position, i, self.args.limit_margin)
-                if ramp is None or ramp.start_excess == 0.0 or excess > ramp.start_excess + LIMIT_SLACK:
+                if ramp is not None:
+                    allowed = ramp.start_excess
+                elif mode == "hold" and i in self.settle and now < self.settle[i][1]:
+                    allowed = self.settle[i][0]
+                else:
+                    allowed = 0.0
+                if allowed == 0.0 or excess > allowed + LIMIT_SLACK:
                     return f"ID {i} at {math.degrees(m.last_position):+.1f} deg is outside its joint limit"
+            else:
+                self.settle.pop(i, None)
         problems, self.warnings = roll_status(positions, self.measured)
         return problems[0] if problems else None
 
@@ -452,6 +462,8 @@ class HoldScan:
             if abs(error) > POSE_TOL:
                 print(f"\nWARNING: ID {i} is {math.degrees(error):+.1f} deg from its hold target after its ramp.")
             del self.ramps[i]
+            if ramp.start_excess > 0.0 and limit_excess(self.motors[i].last_position, i, self.args.limit_margin) > 0.0:
+                self.settle[i] = (ramp.start_excess, now + SETTLE_S)
             self.target[i] = ramp.end
             self.mode[i] = "hold"
 
@@ -475,6 +487,7 @@ class HoldScan:
         self.phase = k
         self.measured = motor_id
         self.ramps.pop(motor_id, None)
+        self.settle.pop(motor_id, None)
         self.mode[motor_id] = "free"
         for i in self.motors:
             if i != motor_id and self.mode[i] not in ("hold", "ramp"):
@@ -532,6 +545,7 @@ class HoldScan:
 
     def brake(self):
         self.ramps.clear()
+        self.settle.clear()
         self.tracking = False
         for i in self.motors:
             self.mode[i] = "brake"
