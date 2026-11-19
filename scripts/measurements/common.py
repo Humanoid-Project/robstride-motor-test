@@ -7,7 +7,9 @@ import time
 from robonex_common.can import FeedbackHub, Motor
 from robonex_common.joints import ALL_MOTORS, MOTOR_BY_ID, MOTOR_LIMITS_BY_ID
 from robonex_common.joints import channel_for_motor_id as channel_for_id
-from robonex_common.limits import DEFAULT_LIMIT_MARGIN_RAD, exceeds_joint_limit, exceeds_stop_limit, joint_limit_for
+from robonex_common.limits import (
+    DEFAULT_LIMIT_MARGIN_RAD, exceeds_joint_limit, exceeds_stop_limit, joint_limit_for, stop_limit_for,
+)
 from robonex_common.motors import MOTOR_PHYSICS, MOTOR_SPECS, PEAK_TORQUE, RATED_TORQUE
 from robonex_common.protocol import (
     COMM_PARAMETER_WRITE,
@@ -62,13 +64,13 @@ def arm_can_watchdog(motor, timeout_ms):
         return True
     counts = int(timeout_ms) * CAN_TIMEOUT_COUNTS_PER_MS
     _write_can_timeout(motor, counts)
+    motor.can_watchdog_armed = True
     time.sleep(0.01)
     readback = motor.read_param(CAN_TIMEOUT_INDEX, fmt="<I", timeout=0.3)
     if readback != counts:
         print(f"ERROR: CAN watchdog 0x7028 read back {readback} after writing {counts}; nothing moves. "
               "Pass --can-timeout-ms 0 to run without it.")
         return False
-    motor.can_watchdog_armed = True
     print(f"CAN watchdog: {timeout_ms} ms (0x7028 = {counts}, not saved)")
     return True
 

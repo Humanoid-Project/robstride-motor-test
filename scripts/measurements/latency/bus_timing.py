@@ -18,7 +18,7 @@ from common import (
     HOST_ID, DEFAULT_INTERFACE, SPECS,
     RUN_MODE_INDEX, RUN_MODE_OPERATION,
     Motor,
-    DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_stop_limit,
+    DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_stop_limit, stop_limit_for,
     add_can_timeout_option, can_timeout_problem, arm_can_watchdog, disarm_can_watchdog,
     install_stop_signals, report_invalid_args,
 )
@@ -469,9 +469,9 @@ def start_hold(bench):
             raise Abort(f"no feedback from ID {motor.motor_id} after enable")
         reference = motor.last_position
         if not args.ignore_joint_limit:
-            lo, hi = joint_limit_for(motor.motor_id, args.limit_margin)
-            if not lo < reference < hi:
-                raise Abort(f"ID {motor.motor_id} is at {math.degrees(reference):+.2f} deg, outside its joint limits "
+            lo, hi = stop_limit_for(motor.motor_id, args.limit_margin)
+            if exceeds_stop_limit(reference, motor.motor_id, args.limit_margin):
+                raise Abort(f"ID {motor.motor_id} is at {math.degrees(reference):+.2f} deg, outside its stop limits "
                             f"{math.degrees(lo):+.1f} to {math.degrees(hi):+.1f}")
         references[motor.motor_id] = reference
         held.append(motor)

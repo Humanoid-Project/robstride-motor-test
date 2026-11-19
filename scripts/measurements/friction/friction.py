@@ -23,7 +23,7 @@ from common import (
     RUN_MODE_INDEX, RUN_MODE_OPERATION, MECH_POS_INDEX, FAULT_STA_INDEX,
     Motor, channel_for_id, decode_fault_bits, active_brake,
     validate_args, report_invalid_args,
-    JOINT_LIMITS_RAD, DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_stop_limit, MOTOR_MODEL,
+    JOINT_LIMITS_RAD, DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_joint_limit, exceeds_stop_limit, MOTOR_MODEL,
     add_can_timeout_option, can_timeout_problem, arm_can_watchdog, install_stop_signals,
 )
 from robonex_common.can import FeedbackHub
@@ -162,7 +162,7 @@ def limit_problems(positions, args):
     if args.ignore_joint_limit:
         return []
     return [f"ID {motor_id} target {math.degrees(pos):+.1f} deg is outside its joint limit"
-            for motor_id, pos in positions.items() if exceeds_stop_limit(pos, motor_id, args.limit_margin)]
+            for motor_id, pos in positions.items() if exceeds_joint_limit(pos, motor_id, args.limit_margin)]
 
 
 def partner_ankle(motor_id):

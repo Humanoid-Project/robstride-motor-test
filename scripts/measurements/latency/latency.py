@@ -21,7 +21,7 @@ from common import (
     RUN_MODE_INDEX, RUN_MODE_OPERATION,
     Motor, channel_for_id, active_brake, PLACEHOLDER_ARMATURE,
     validate_args, report_invalid_args,
-    DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_stop_limit,
+    DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_stop_limit, stop_limit_for,
     add_can_timeout_option, can_timeout_problem, arm_can_watchdog, install_stop_signals,
 )
 from robonex_common.can import drain
@@ -562,9 +562,10 @@ def limit_problems(args, reference):
     up = max((shift_for(s) for s in steps(args) if s > 0), default=0.0)
     down = max((shift_for(s) for s in steps(args) if s < 0), default=0.0)
     bad = []
-    if not lo < reference < hi:
-        bad.append(f"the reference {math.degrees(reference):+.2f} deg is outside the joint limits "
-                   f"{math.degrees(lo):+.1f} to {math.degrees(hi):+.1f}")
+    if exceeds_stop_limit(reference, args.motor_id, args.limit_margin):
+        stop_lo, stop_hi = stop_limit_for(args.motor_id, args.limit_margin)
+        bad.append(f"the reference {math.degrees(reference):+.2f} deg is outside the stop limits "
+                   f"{math.degrees(stop_lo):+.1f} to {math.degrees(stop_hi):+.1f}")
     if up and reference + up > hi:
         bad.append(f"+{math.degrees(up):.2f} deg exceeds the upper limit "
                    f"{math.degrees(hi):+.1f} from {math.degrees(reference):+.2f}")
