@@ -21,6 +21,7 @@ motor_control/
 | - | `--ids` | `legs` | Motors to move: IDs, groups or joint names; leg motors go to the policy default pose, head and arm motors to 0 rad |
 | - | `--target-deg` | - | Per-motor target override in degrees, `ID=DEG`, inside that joint's limits |
 | - | `--allow-placeholder-limits` | Off | Allow head (`26`–`27`) and arm (`16`–`25`) motors, whose limits are PLACEHOLDERs |
+| - | `--can-timeout-ms` | `1000` | Motor CAN watchdog (0x7028, not saved); `0` disables, at most `5000` |
 
 ```bash
 # Example
@@ -40,6 +41,7 @@ Same as `set_motor_pose.py`, but every selected motor goes to 0 rad and holds th
 | --- | --- | --- | --- |
 | - | `--ids` | `legs` | Motors to move to 0 rad: IDs, groups or joint names |
 | - | `--allow-placeholder-limits` | Off | Allow head (`26`–`27`) and arm (`16`–`25`) motors, whose limits are PLACEHOLDERs |
+| - | `--can-timeout-ms` | `1000` | Motor CAN watchdog (0x7028, not saved); `0` disables, at most `5000` |
 
 ```bash
 # Example

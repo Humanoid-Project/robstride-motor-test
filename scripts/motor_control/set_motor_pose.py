@@ -9,6 +9,10 @@ import time
 import can
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "measurements"))
+from common import (
+    add_can_timeout_option, arm_can_watchdog, can_timeout_problem, disarm_can_watchdog, install_stop_signals,
+)
 from motor_selection import (
     SELECTOR_HELP,
     BusOpenError,
@@ -22,7 +26,9 @@ from motor_selection import (
     variant_summary,
 )
 from robonex_common.can import FeedbackHub, Motor
-from robonex_common.joints import ALL_MOTORS, DEFAULT_JOINT_POS
+from robonex_common.foot_roll import foot_roll
+from robonex_common.joints import ALL_MOTORS, DEFAULT_JOINT_POS, JOINT_BY_MODEL_NAME
+from robonex_common.models import VER2_EDU
 from robonex_common.motors import MOTOR_SPECS
 from robonex_common.protocol import DEFAULT_INTERFACE, HOST_ID, clamp
 from robonex_common.joints import channel_for_motor_id as channel_for_id
@@ -45,6 +51,46 @@ TRACKING_STOP = math.radians(25.0)
 FEEDBACK_TIMEOUT = 0.3
 SPECS = MOTOR_SPECS
 JOINT_MAP = {joint.motor_id: joint.hardware_name for joint in ALL_MOTORS}
+ROLL_MARGIN = math.radians(1.0)
+ROLL_PATH_STEPS = 20
+FEEDBACK_FAULT_NAMES = (
+    "undervoltage", "overcurrent", "overtemperature", "magnetic encoder fault", "stall overload", "uncalibrated",
+)
+
+
+def foot_rolls(positions):
+    clip = VER2_EDU.foot_roll
+    rolls = {}
+    for upper_name, lower_name, sign in clip.pairs:
+        upper = JOINT_BY_MODEL_NAME[upper_name].motor_id
+        lower = JOINT_BY_MODEL_NAME[lower_name].motor_id
+        if upper in positions and lower in positions:
+            rolls[(upper, lower)] = foot_roll(sign * positions[upper], sign * positions[lower], clip.coeffs)
+    return rolls
+
+
+def roll_path_problems(starts, targets):
+    limit = VER2_EDU.foot_roll.limit
+    start_rolls = foot_rolls(starts)
+    problems = []
+    for pair, roll in foot_rolls(targets).items():
+        if abs(roll) > limit - ROLL_MARGIN:
+            problems.append(f"target foot roll {math.degrees(roll):+.1f} deg of IDs {pair[0]}/{pair[1]} exceeds "
+                            f"{math.degrees(limit - ROLL_MARGIN):.0f} deg")
+    for step in range(1, ROLL_PATH_STEPS):
+        frac = step / ROLL_PATH_STEPS
+        path = {mid: starts[mid] + (targets[mid] - starts[mid]) * frac for mid in targets}
+        for pair, roll in foot_rolls(path).items():
+            bound = max(limit, abs(start_rolls.get(pair, 0.0)))
+            if abs(roll) > bound:
+                problems.append(f"foot roll of IDs {pair[0]}/{pair[1]} reaches {math.degrees(roll):+.1f} deg on "
+                                f"the way to the targets (bound {math.degrees(bound):.0f} deg)")
+                return problems
+    return problems
+
+
+def feedback_fault_names(flags):
+    return [name for bit, name in enumerate(FEEDBACK_FAULT_NAMES) if flags & (1 << bit)]
 
 
 
@@ -66,11 +112,16 @@ def main(zero_pose=False):
                              "that joint's limits)")
     parser.add_argument("--allow-placeholder-limits", action="store_true",
                         help="Also move head/arm motors, whose joint limits are unmeasured PLACEHOLDERs")
+    add_can_timeout_option(parser)
     parser.set_defaults(
         interface=DEFAULT_INTERFACE,
         host_id=HOST_ID,
     )
     args = parser.parse_args()
+    problem = can_timeout_problem(args)
+    if problem:
+        parser.error(problem)
+    install_stop_signals()
 
     try:
         variant = attached_variant()
@@ -152,6 +203,7 @@ def main(zero_pose=False):
                 print(f"ERROR: Motor ID {motor_id} reads outside -180..+180 deg. "
                       "Set zero_sta=1 (0x7029) on it before moving.")
                 return 1
+            m["current"] = current
             target = current if m["target_cfg"] is None else m["target_cfg"]
             m["target"] = clamp(target, m["motor"].spec.p_min, m["motor"].spec.p_max)
             travel = abs(m["target"] - current)
@@ -159,6 +211,14 @@ def main(zero_pose=False):
             note = "" if m["target_cfg"] is not None else "  (no target: hold current position)"
             print(f"{motor_id:>3}  {channel:<5}  {JOINT_MAP.get(motor_id, '?'):<18}  "
                   f"{m['motor'].spec.name:<5}  {fmt(current):>26}  {fmt(m['target']):>26}{note}")
+
+        roll_problems = roll_path_problems({mid: m["current"] for mid, m in motors.items()},
+                                           {mid: m["target"] for mid, m in motors.items()})
+        if roll_problems:
+            for text in roll_problems:
+                print(f"ERROR: {text}")
+            print("Nothing moved. Choose ankle targets whose foot roll stays inside the 12 deg clip.")
+            return 1
 
         print(f"Move time: about {move_time:.1f} s at {MOVE_SPEED} rad/s, "
               f"hold gains kp={HOLD_KP}, kd={HOLD_KD}")
@@ -180,6 +240,14 @@ def main(zero_pose=False):
                     mm["motor"].stop()
                 except can.CanError:
                     pass
+
+        for m in motors.values():
+            m["motor"].stop()
+        time.sleep(0.02)
+        for motor_id, m in motors.items():
+            if not arm_can_watchdog(m["motor"], args.can_timeout_ms):
+                print(f"ERROR: CAN watchdog not confirmed on ID {motor_id}; nothing moved.")
+                return 1
 
         for motor_id, m in motors.items():
             m["motor"].write_run_mode_operation()
@@ -203,11 +271,16 @@ def main(zero_pose=False):
             move_time = max(move_time, abs(m["target"] - m["start"]) / MOVE_SPEED)
 
         period = 1.0 / RATE
+        roll_bounds = {pair: max(VER2_EDU.foot_roll.limit, abs(roll)) + ROLL_MARGIN
+                       for pair, roll in foot_rolls({mid: m["start"] for mid, m in motors.items()}).items()}
 
         def check_safety(now):
 
             for mid, mm in motors.items():
                 motor = mm["motor"]
+                if motor.last_fault:
+                    names = ", ".join(feedback_fault_names(motor.last_fault))
+                    return f"ID {mid} reports fault flags 0x{motor.last_fault:02X} ({names})"
                 if abs(motor.last_velocity) > OVERSPEED_STOP:
                     return f"ID {mid} overspeed ({motor.last_velocity:+.2f} rad/s)"
                 if motor.last_feedback_time <= 0.0:
@@ -218,6 +291,12 @@ def main(zero_pose=False):
                 if motor.last_position is not None and abs(mm["cmd"] - motor.last_position) > TRACKING_STOP:
                     return (f"ID {mid} tracking error "
                             f"{math.degrees(mm['cmd'] - motor.last_position):+.1f} deg")
+            measured = {mid: mm["motor"].last_position for mid, mm in motors.items()
+                        if mm["motor"].last_position is not None}
+            for pair, roll in foot_rolls(measured).items():
+                if abs(roll) > roll_bounds[pair]:
+                    return (f"foot roll {math.degrees(roll):+.1f} deg of IDs {pair[0]}/{pair[1]} exceeds "
+                            f"{math.degrees(roll_bounds[pair]):.0f} deg")
             return None
 
         print(f"Moving ({move_time:.1f} s)")
@@ -290,15 +369,17 @@ def main(zero_pose=False):
     except KeyboardInterrupt:
         print("\nStop requested.")
     finally:
-        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        masked = {sig: signal.signal(sig, signal.SIG_IGN) for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)}
         for m in motors.values():
             try:
                 m["motor"].stop()
             except can.CanError:
                 pass
+            disarm_can_watchdog(m["motor"])
         for bus in buses.values():
             bus.shutdown()
-        signal.signal(signal.SIGINT, signal.default_int_handler)
+        for sig, handler in masked.items():
+            signal.signal(sig, handler)
         print("Stopped.")
     return 0
 
