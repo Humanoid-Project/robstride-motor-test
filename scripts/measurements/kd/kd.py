@@ -28,7 +28,7 @@ from common import (
     RUN_MODE_INDEX, RUN_MODE_OPERATION,
     Motor, channel_for_id, active_brake,
     validate_args, report_invalid_args,
-    DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_joint_limit,
+    DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_stop_limit,
     add_can_timeout_option, can_timeout_problem, arm_can_watchdog, install_stop_signals,
 )
 from robonex_common.can import drain
@@ -105,7 +105,7 @@ def hold(motor, pos_target, vel_target, args, duration, collect):
         if motor.last_mode_status != MODE_RUNNING:
             print()
             return None, f"motor left run mode (mode {motor.last_mode_status})"
-        if not args.ignore_joint_limit and exceeds_joint_limit(pos, args.motor_id, args.limit_margin):
+        if not args.ignore_joint_limit and exceeds_stop_limit(pos, args.motor_id, args.limit_margin):
             return None, "joint_limit"
         if collect and (args.sample_all or (now >= sample_from and alpha >= 1.0)):
             rows.append((round(now - began, 5), round(vt, 5), pos_target, vel_target,

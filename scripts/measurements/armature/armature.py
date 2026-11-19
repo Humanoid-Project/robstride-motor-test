@@ -17,7 +17,7 @@ from common import (
     RUN_MODE_INDEX, RUN_MODE_OPERATION, MECH_POS_INDEX, FAULT_STA_INDEX,
     Motor, channel_for_id, decode_fault_bits, active_brake,
     validate_args, report_invalid_args,
-    DEFAULT_LIMIT_MARGIN_RAD, exceeds_joint_limit,
+    DEFAULT_LIMIT_MARGIN_RAD, exceeds_stop_limit,
     add_can_timeout_option, can_timeout_problem, arm_can_watchdog, install_stop_signals,
     outside_position_domain, POSITION_DOMAIN_RAD, return_to_position,
 )
@@ -164,7 +164,7 @@ def run_capture(motor, torque_cmd, pos_start, args):
             if outside_position_domain(pos):
                 stop_reason = "position_domain"
                 break
-            if not args.ignore_joint_limit and exceeds_joint_limit(pos, args.motor_id, args.limit_margin):
+            if not args.ignore_joint_limit and exceeds_stop_limit(pos, args.motor_id, args.limit_margin):
                 print(f"\nJoint limit reached at {pos:+.4f} rad ({math.degrees(pos):+.1f} deg).")
                 stop_reason = "joint_limit"
                 break
@@ -228,7 +228,7 @@ def capture_once(args, torque, run_index):
             print("ERROR: The motor did not settle before the safety timeout.")
             motor.stop()
             return 1, None, "not_settled"
-        if not args.ignore_joint_limit and exceeds_joint_limit(pos_start, args.motor_id, args.limit_margin):
+        if not args.ignore_joint_limit and exceeds_stop_limit(pos_start, args.motor_id, args.limit_margin):
             print(f"ERROR: Start position {pos_start:+.4f} rad "
                   f"({math.degrees(pos_start):+.1f} deg) is outside the joint limit.")
             motor.stop()

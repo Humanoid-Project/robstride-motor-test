@@ -40,7 +40,7 @@ from common import (
     RUN_MODE_INDEX, RUN_MODE_OPERATION, FAULT_STA_INDEX,
     Motor, channel_for_id, decode_fault_bits, active_brake,
     validate_args, report_invalid_args,
-    JOINT_LIMITS_RAD, DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_joint_limit,
+    JOINT_LIMITS_RAD, DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_stop_limit,
 )
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
@@ -112,7 +112,7 @@ def hold(motor, target, args, duration, collect, start=None):
             continue
         last_ok = now
         _, pos, vel, tq, temp, fault = fb
-        if not args.ignore_joint_limit and exceeds_joint_limit(pos, args.motor_id, args.limit_margin):
+        if not args.ignore_joint_limit and exceeds_stop_limit(pos, args.motor_id, args.limit_margin):
             return None, "joint_limit"
         if collect and now >= sample_from and alpha >= 1.0:
             rows.append((target, pos, vel, tq, temp))

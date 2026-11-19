@@ -23,7 +23,7 @@ from common import (
     RUN_MODE_INDEX, RUN_MODE_OPERATION, MECH_POS_INDEX, FAULT_STA_INDEX,
     Motor, channel_for_id, decode_fault_bits, active_brake,
     validate_args, report_invalid_args,
-    JOINT_LIMITS_RAD, DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_joint_limit, MOTOR_MODEL,
+    JOINT_LIMITS_RAD, DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_stop_limit, MOTOR_MODEL,
     add_can_timeout_option, can_timeout_problem, arm_can_watchdog, install_stop_signals,
 )
 from robonex_common.can import FeedbackHub
@@ -162,7 +162,7 @@ def limit_problems(positions, args):
     if args.ignore_joint_limit:
         return []
     return [f"ID {motor_id} target {math.degrees(pos):+.1f} deg is outside its joint limit"
-            for motor_id, pos in positions.items() if exceeds_joint_limit(pos, motor_id, args.limit_margin)]
+            for motor_id, pos in positions.items() if exceeds_stop_limit(pos, motor_id, args.limit_margin)]
 
 
 def partner_ankle(motor_id):
@@ -216,7 +216,7 @@ class HeldMotor:
                 return f"hold ID {m.motor_id} left its target by {math.degrees(m.last_position - hold.target):+.1f} deg"
             if abs(m.last_velocity) >= self.args.max_vel:
                 return f"hold ID {m.motor_id} speed {m.last_velocity:+.2f} rad/s"
-            if exceeds_joint_limit(m.last_position, m.motor_id, self.args.limit_margin):
+            if exceeds_stop_limit(m.last_position, m.motor_id, self.args.limit_margin):
                 return f"hold ID {m.motor_id} reached its joint limit"
         problems = roll_problems(positions)
         return problems[0] if problems else None
@@ -280,7 +280,7 @@ def approach(held, targets, starts, args):
             if abs(vel) >= args.max_vel:
                 print(f"\nEMERGENCY STOP: |vel|={vel:+.3f} rad/s during the approach.")
                 return False
-            if exceeds_joint_limit(pos, measured, args.limit_margin):
+            if exceeds_stop_limit(pos, measured, args.limit_margin):
                 print(f"\nJoint limit reached during the approach at {math.degrees(pos):+.1f} deg.")
                 return False
             problem = held.hold_problem(tol=APPROACH_TOL)
@@ -431,7 +431,7 @@ def run_search(motor, pos_start, args):
             if abs(vel) >= args.max_vel:
                 stop_reason = "max_vel"
                 break
-            if not args.ignore_joint_limit and exceeds_joint_limit(pos, args.motor_id, args.limit_margin):
+            if not args.ignore_joint_limit and exceeds_stop_limit(pos, args.motor_id, args.limit_margin):
                 print(f"\nJoint limit reached at {pos:+.4f} rad ({math.degrees(pos):+.1f} deg).")
                 stop_reason = "joint_limit"
                 break
@@ -517,7 +517,7 @@ def capture_once(args, sign, run_index):
                     return 1, None, "no_response"
                 starts[m.motor_id] = pos
             bad = [f"ID {i} reads {math.degrees(q):+.1f} deg, outside its joint limit or +-180 deg (check zero_sta)"
-                   for i, q in starts.items() if abs(q) > math.pi or exceeds_joint_limit(q, i, args.limit_margin)]
+                   for i, q in starts.items() if abs(q) > math.pi or exceeds_stop_limit(q, i, args.limit_margin)]
             if bad:
                 for problem in bad:
                     print(f"ERROR: {problem}; nothing moves.")
@@ -558,7 +558,7 @@ def capture_once(args, sign, run_index):
                 print(f"WARNING: The measured joint settled {math.degrees(pos_start - targets[args.motor_id]):+.1f} deg "
                       f"from the start pose (gravity or friction); the result is for {math.degrees(pos_start):+.1f} deg.")
 
-        if not args.ignore_joint_limit and exceeds_joint_limit(pos_start, args.motor_id, args.limit_margin):
+        if not args.ignore_joint_limit and exceeds_stop_limit(pos_start, args.motor_id, args.limit_margin):
             print(f"ERROR: Start position {pos_start:+.4f} rad is outside the joint limit.")
             may_return = False
             active.stop()

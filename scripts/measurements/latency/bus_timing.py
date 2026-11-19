@@ -18,7 +18,7 @@ from common import (
     HOST_ID, DEFAULT_INTERFACE, SPECS,
     RUN_MODE_INDEX, RUN_MODE_OPERATION,
     Motor,
-    DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_joint_limit,
+    DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_stop_limit,
     add_can_timeout_option, can_timeout_problem, arm_can_watchdog, disarm_can_watchdog,
     install_stop_signals, report_invalid_args,
 )
@@ -405,7 +405,7 @@ def check_hold(motor, feedback, reference, args):
         raise Abort(f"ID {motor.motor_id} left run mode (mode {motor.last_mode_status})")
     if fault:
         raise Abort(f"ID {motor.motor_id} feedback fault bits {fault:#04x}")
-    if not args.ignore_joint_limit and exceeds_joint_limit(pos, motor.motor_id, args.limit_margin):
+    if not args.ignore_joint_limit and exceeds_stop_limit(pos, motor.motor_id, args.limit_margin):
         raise Abort(f"ID {motor.motor_id} joint_limit")
     if abs(pos - reference) > HOLD_DEVIATION_RAD:
         raise Abort(f"ID {motor.motor_id} moved {math.degrees(pos - reference):+.2f} deg from its hold position")

@@ -7,7 +7,7 @@ import time
 from robonex_common.can import FeedbackHub, Motor
 from robonex_common.joints import ALL_MOTORS, MOTOR_BY_ID, MOTOR_LIMITS_BY_ID
 from robonex_common.joints import channel_for_motor_id as channel_for_id
-from robonex_common.limits import DEFAULT_LIMIT_MARGIN_RAD, exceeds_joint_limit, joint_limit_for
+from robonex_common.limits import DEFAULT_LIMIT_MARGIN_RAD, exceeds_joint_limit, exceeds_stop_limit, joint_limit_for
 from robonex_common.motors import MOTOR_PHYSICS, MOTOR_SPECS, PEAK_TORQUE, RATED_TORQUE
 from robonex_common.protocol import (
     COMM_PARAMETER_WRITE,

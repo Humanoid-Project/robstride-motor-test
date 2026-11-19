@@ -23,7 +23,7 @@ from common import (
     RUN_MODE_INDEX, RUN_MODE_OPERATION, MECH_POS_INDEX, FAULT_STA_INDEX,
     Motor, channel_for_id, decode_fault_bits, active_brake,
     validate_args, report_invalid_args,
-    JOINT_LIMITS_RAD, DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_joint_limit,
+    JOINT_LIMITS_RAD, DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_stop_limit,
     add_can_timeout_option, can_timeout_problem, arm_can_watchdog, install_stop_signals,
     outside_position_domain, POSITION_DOMAIN_RAD as POSITION_DOMAIN_LIMIT,
 )
@@ -130,7 +130,7 @@ def ramp_to_speed(motor, target_speed, kd, pos_ref, args, label, start_speed=0.0
                 print()
                 return False, last_pos, last_vel, "max_turns"
             if (not args.ignore_joint_limit and target_speed != 0.0
-                    and exceeds_joint_limit(pos, args.motor_id, args.limit_margin)):
+                    and exceeds_stop_limit(pos, args.motor_id, args.limit_margin)):
                 print()
                 print(f"[{label}] Joint limit reached at {pos:+.4f} rad ({math.degrees(pos):+.1f} deg).")
                 return False, last_pos, last_vel, "joint_limit"
@@ -199,7 +199,7 @@ def run_hold(motor, target_speed, kd, pos_ref, args):
         if abs(pos - pos_ref) >= args.max_turns * 2.0 * math.pi:
             stop_reason = "max_turns"
             break
-        if not args.ignore_joint_limit and exceeds_joint_limit(pos, args.motor_id, args.limit_margin):
+        if not args.ignore_joint_limit and exceeds_stop_limit(pos, args.motor_id, args.limit_margin):
             print(f"\nJoint limit reached at {pos:+.4f} rad ({math.degrees(pos):+.1f} deg).")
             stop_reason = "joint_limit"
             break
@@ -271,7 +271,7 @@ def capture_once(args, speed, run_index):
             if lo is None:
                 print(f"ERROR: No joint limit is defined for motor ID {args.motor_id}.")
                 return 1, None, "missing_joint_limit"
-            if exceeds_joint_limit(pos_ref, args.motor_id, args.limit_margin):
+            if exceeds_stop_limit(pos_ref, args.motor_id, args.limit_margin):
                 print(f"ERROR: Position {pos_ref:+.4f} rad ({math.degrees(pos_ref):+.1f} deg) is outside the joint limit.")
                 motor.stop()
                 return 1, None, "initial_joint_limit"

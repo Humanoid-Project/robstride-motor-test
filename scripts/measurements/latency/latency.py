@@ -21,7 +21,7 @@ from common import (
     RUN_MODE_INDEX, RUN_MODE_OPERATION,
     Motor, channel_for_id, active_brake, PLACEHOLDER_ARMATURE,
     validate_args, report_invalid_args,
-    DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_joint_limit,
+    DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_stop_limit,
     add_can_timeout_option, can_timeout_problem, arm_can_watchdog, install_stop_signals,
 )
 from robonex_common.can import drain
@@ -515,7 +515,7 @@ def check_feedback(motor, feedback, reference, args, limits):
         raise Abort(f"motor left run mode (mode {motor.last_mode_status})")
     if fault:
         raise Abort(f"feedback fault bits {fault:#04x}")
-    if not args.ignore_joint_limit and exceeds_joint_limit(pos, args.motor_id, args.limit_margin):
+    if not args.ignore_joint_limit and exceeds_stop_limit(pos, args.motor_id, args.limit_margin):
         raise Abort("joint_limit")
     if abs(pos - reference) > limits["deviation"]:
         raise Abort(f"position moved {math.degrees(pos - reference):+.2f} deg from the reference "
