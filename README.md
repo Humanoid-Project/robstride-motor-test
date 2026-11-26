@@ -25,7 +25,7 @@ pip install -r requirements.txt
 | `13`–`15` | reserved | `waist` | - | - |
 | `16`–`20` | `left_shoulder_pitch`, `left_shoulder_roll`, `left_shoulder_yaw`, `left_elbow`, `left_wrist_yaw` | `left_arm` | rs02, rs10p, rs00, rs00, rs05 | `can2` |
 | `21`–`25` | `right_shoulder_pitch`, `right_shoulder_roll`, `right_shoulder_yaw`, `right_elbow`, `right_wrist_yaw` | `right_arm` | rs02, rs10p, rs00, rs00, rs05 | `can3` |
-| `26`–`27` | `neck_pitch`, `neck_yaw` (`28` reserved) | `head` | rs05 | `can4` |
+| `26`–`27` | `neck_yaw`, `neck_pitch` (`28` reserved) | `head` | rs05 | `can4` |
 
 One robot model, `ver2` (all IDs above); an identity file that still says `ver2_edu` is read as `ver2`. Head pitch ±73°, shoulder pitch (16, 21) ±100°; the other arm and neck-yaw limits (±45° / ±30°) are PLACEHOLDERs until measured. `--ids` also takes `legs`, `arms`, `all` and joint names; the default set is the attached robot's, read from `~/.config/robonex/robot_model`:
 
