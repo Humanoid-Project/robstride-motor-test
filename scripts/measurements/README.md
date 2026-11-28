@@ -30,6 +30,9 @@ measurements/
 │   └── analyze_bus_timing.py
 ├── torque/
 │   └── torque.py
+├── thermal/
+│   ├── thermal_hold.py
+│   └── analyze_thermal.py
 ├── joint/
 │   ├── read_joint_values.py
 │   └── scan_joint_limits.py
@@ -186,11 +189,12 @@ kp is the position gain the joint actually honours, as a fraction of the value c
 | --- | --- | --- | --- |
 | - | `--motor-id` | `Required` | Select the motor |
 | - | `--model` | `Auto from ID` | `rs00`, `rs02`, `rs03`, `rs05` or `rs10p`; must match the ID, required only for an unregistered ID |
-| - | `--kp` | `Required` | Set the position gain to command |
+| - | `--kp` | `Required` | Set the position gain to command; at most the model's frame range (500, RS03 5000), and kp x max offset at most its peak torque |
 | - | `--offsets-deg` | `-6 -4 -2 2 4 6` | Set step offsets from the reference, in degrees |
 | - | `--repeats` | `2` | Set repeats per offset |
 | - | `--ignore-joint-limit` | Off | Disable joint-limit checks |
 | - | `--ramp-rate` | `0.15` | Set the commanded position slew between offsets, rad/s |
+| - | `--can-timeout-ms` | `1000` | Motor CAN watchdog for the run (0x7028, not saved, cleared after the run); `0` turns it off |
 
 ```bash
 # Example
@@ -219,13 +223,14 @@ velocity target is stepped, so the joint shifts by kd * vel_target / kp without 
 | --- | --- | --- | --- |
 | - | `--motor-id` | `Required` | Select the motor |
 | - | `--model` | `Auto from ID` | `rs00`, `rs02`, `rs03`, `rs05` or `rs10p`; must match the ID, required only for an unregistered ID |
-| - | `--kp` | `Required` | Set the position gain to hold with |
-| - | `--kd` | `Required` | Set the velocity gain to command |
+| - | `--kp` | `Required` | Set the position gain to hold with; at most the model's frame range (500, RS03 5000) |
+| - | `--kd` | `Required` | Set the velocity gain to command; at most the model's frame range (5, RS03 100) |
 | - | `--vel-targets` | `-1.0 -0.5 0.5 1.0` | Set velocity targets in rad/s |
 | - | `--repeats` | `2` | Set repeats per target |
 | - | `--ignore-joint-limit` | Off | Disable joint-limit checks |
 | - | `--ramp-time` | `0.5` | Set seconds to ramp the velocity target in; near `0.02` measures latency |
 | - | `--sample-all` | Off | Record the whole hold instead of the settled window |
+| - | `--can-timeout-ms` | `1000` | Motor CAN watchdog for the run (0x7028, not saved, cleared after the run); `0` turns it off |
 
 ```bash
 # Example
@@ -302,7 +307,7 @@ python3 scripts/measurements/latency/latency.py --motor-id 5 --kp 40 --kd 2.0 --
 | - | `--coulomb` | `0` | Coulomb friction in N·m for the position-mode model fit |
 | - | `--stiction` | `0` | Breakaway torque in N·m for the position-mode model fit |
 | - | `--fit-ms` | `150` | Fit window after the step frame in ms (position mode) |
-| - | `--j-candidates` | RS02 `0.0042 0.0173`, RS03 `0.02 0.064` | Inertias in kg·m² scored by the position-mode fit |
+| - | `--j-candidates` | RS02 `0.0042 0.0173`, RS03 `0.02 0.064`, RS00 `0.001`, RS05 `0.0007`, RS10P `0.00625` | Inertias in kg·m² scored by the position-mode fit (RS00/RS05/RS10P: spec-sheet rotor inertia) |
 | - | `--no-free-j` | Off | Score only `--j-candidates`, no free inertia fit |
 
 ```bash
@@ -408,7 +413,7 @@ python3 -m unittest discover -s tests -v
 
 ## torque
 
-`torque.py` passively displays type `0x02` torque feedback from every motor of the attached robot. It sends no CAN frames, so a motor controller such as `mujoco_to_real.py` must run separately. The displayed value is the motor controller's internal torque estimate, not an independent load-cell measurement.
+`torque.py` passively displays type `0x02` torque feedback from the selected motors of the attached robot. It sends no CAN frames, so a motor controller such as `mujoco_to_real.py` must run separately. The displayed value is the motor controller's internal torque estimate, not an independent load-cell measurement.
 
 ### `torque.py`
 
@@ -416,10 +421,60 @@ python3 -m unittest discover -s tests -v
 | --- | --- | --- | --- |
 | - | `--refresh` | `10` | Set the terminal refresh rate in Hz |
 | - | `--stale-after` | `0.3` | Set the stale-feedback threshold in seconds |
+| - | `--ids` | Attached robot | Select motors to monitor: IDs, groups (`legs`, `head`, `arms`, …) or joint names; only their CAN channels are opened |
 
 ```bash
 # Example
 python3 scripts/measurements/torque/torque.py
+
+# One motor on a bench
+python3 scripts/measurements/torque/torque.py --ids 25
+```
+
+<br>
+
+## thermal
+
+`thermal_hold.py` holds one motor at a fixed position with `--kp` / `--kd` (and an optional feed-forward torque) and logs temperature, position, velocity, reported torque, filtered q-axis current (iqf, 0x701A), fault flags and the ambient to `thermal/data/id<N>_<model>_<timestamp>.csv`. The hold stops at the stop temperature, the time limit, an optional plateau, any type `0x02` fault flag, a feedback timeout, a tracking error, overspeed, a joint stop limit, Ctrl-C or SIGTERM/SIGHUP; the motor is then braked and stopped, and a cool-down phase keeps logging with the motor disabled.
+
+### `thermal_hold.py`
+
+| Command | Option | Default | Description |
+| --- | --- | --- | --- |
+| - | `--motor-id` | `Required` | Select the motor |
+| - | `--model` | `Auto from ID` | `rs00`, `rs02`, `rs03`, `rs05` or `rs10p`; must match the ID, required only for an unregistered ID |
+| - | `--kp` | `Required` | Set the hold position gain, at most the model's kp_max |
+| - | `--kd` | `Required` | Set the hold velocity gain, at most the model's kd_max |
+| - | `--tau-ff` | `0.0` | Set a feed-forward torque in N·m, ramped in over 2 s, at most the model's rated torque |
+| - | `--target-deg` | `-` | Hold this position in degrees instead of the current one; not with `--ignore-joint-limit` |
+| - | `--ambient-c` | `Required` | Set the room temperature in °C from a thermometer |
+| - | `--stop-temp-c` | `60.0` | Stop the hold at this motor temperature in °C, at most 65 |
+| - | `--max-minutes` | `45.0` | Stop the hold after this many minutes, at most 120 |
+| - | `--plateau-stop` | Off | Also stop when the temperature rose less than 1 °C over the last 10 min |
+| - | `--cooldown-minutes` | `30.0` | Log this long with the motor disabled after the hold; `0` skips it |
+| - | `--rate-hz` | `2.0` | Set the log rate in Hz, at most 10 |
+| - | `--max-error-deg` | `10.0` | Stop when the tracking error exceeds this many degrees, at most 25 |
+| - | `--max-vel` | `1.0` | Stop above this speed in rad/s |
+| - | `--ignore-joint-limit` | Off | Disable joint-limit checks |
+| - | `--can-timeout-ms` | `1000` | Motor CAN watchdog for the run (0x7028, not saved, cleared after the run); `0` turns it off |
+
+```bash
+# Example
+python3 scripts/measurements/thermal/thermal_hold.py --motor-id 21 --kp 40 --kd 2 --ambient-c 24 \
+  --ignore-joint-limit --plateau-stop
+
+# Second run at a higher load
+python3 scripts/measurements/thermal/thermal_hold.py --motor-id 21 --kp 40 --kd 2 --tau-ff 1.5 --ambient-c 24 \
+  --ignore-joint-limit --max-minutes 30
+```
+
+<br>
+
+### `analyze_thermal.py`
+
+```bash
+# Example
+python3 scripts/measurements/thermal/analyze_thermal.py "scripts/measurements/thermal/data/*.csv"
 ```
 
 <br>
