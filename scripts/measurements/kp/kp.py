@@ -41,7 +41,10 @@ from common import (
     Motor, channel_for_id, decode_fault_bits, active_brake,
     validate_args, report_invalid_args,
     JOINT_LIMITS_RAD, DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_stop_limit,
+    PEAK_TORQUE, gain_problems,
+    add_can_timeout_option, can_timeout_problem, arm_can_watchdog, install_stop_signals,
 )
+from robonex_common.can import drain
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 ARG_CHECKS = [("kp", "positive"), ("kd", "positive"), ("settle-time", "positive"),
@@ -62,10 +65,26 @@ def parse_args():
                    help="Unloaded bench tests only")
     p.add_argument("--ramp-rate", type=float, default=0.15,
                    help="Commanded position slew while moving between offsets, rad/s")
+    add_can_timeout_option(p)
     p.set_defaults(interface=DEFAULT_INTERFACE, host_id=HOST_ID, kd=2.0,
                    settle_time=1.2, sample_time=0.5, feedback_timeout=0.3,
                    limit_margin=DEFAULT_LIMIT_MARGIN_RAD, out=None)
     return resolve_model(p, p.parse_args())
+
+
+def argument_problems(args):
+    problems = validate_args(args, args.model, ARG_CHECKS)
+    problem = can_timeout_problem(args)
+    if problem:
+        problems.append(problem)
+    problems.extend(gain_problems(args, args.model))
+    if math.isfinite(args.kp) and args.kp > 0:
+        largest = max(abs(o) for o in args.offsets_deg)
+        torque = args.kp * math.radians(largest)
+        if torque > PEAK_TORQUE[args.model]:
+            problems.append(f"--kp x max|--offsets-deg| = {args.kp} x {largest:g} deg = {torque:.2f} N*m exceeds "
+                            f"the {args.model.upper()} peak torque {PEAK_TORQUE[args.model]} N*m")
+    return problems
 
 
 def confirm(args, model):
@@ -125,7 +144,8 @@ def hold(motor, target, args, duration, collect, start=None):
 
 def main():
     args = parse_args()
-    problems = validate_args(args, args.model, ARG_CHECKS)
+    install_stop_signals()
+    problems = argument_problems(args)
     if problems:
         report_invalid_args(problems)
         return 1
@@ -144,7 +164,13 @@ def main():
     motor = Motor(bus, args.motor_id, SPECS[args.model], host_id=args.host_id)
     rows = []
     try:
+        motor.stop()
+        time.sleep(0.02)
+        drain(bus)
+        if not arm_can_watchdog(motor, args.can_timeout_ms):
+            return 1
         motor.write_param_u8(RUN_MODE_INDEX, RUN_MODE_OPERATION)
+        time.sleep(0.01)
         motor.enable()
         time.sleep(0.2)
         fb = motor.poll_feedback(timeout=1.0)

@@ -8,7 +8,7 @@ import time
 import can
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from motor_selection import BusOpenError, SelectionError, attached_variant, open_bus, variant_motors
+from motor_selection import SELECTOR_HELP, BusOpenError, SelectionError, attached_variant, open_bus, resolve_motors
 from robonex_common.can import FeedbackHub, Motor
 from robonex_common.protocol import DEFAULT_INTERFACE, HOST_ID
 
@@ -24,6 +24,9 @@ def parse_args():
                         help="Terminal refresh rate in Hz")
     parser.add_argument("--stale-after", type=float, default=STALE_DEFAULT_S,
                         help="Mark feedback stale after this many seconds")
+    parser.add_argument("--ids", nargs="+", default=None, metavar="SEL",
+                        help=f"Motors to monitor: {SELECTOR_HELP} (default: every motor of the attached robot); "
+                             "only their CAN channels are opened")
     return parser.parse_args()
 
 
@@ -159,7 +162,7 @@ def main():
         print("ERROR: Run this monitor in an interactive terminal.")
         return 1
     try:
-        args.joints = variant_motors(attached_variant())
+        args.joints = resolve_motors(args.ids, attached_variant())
     except SelectionError as error:
         print(f"ERROR: {error}")
         return 1

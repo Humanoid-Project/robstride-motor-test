@@ -19,7 +19,7 @@ from common import (
     resolve_model,
     HOST_ID, DEFAULT_INTERFACE, SPECS, RATED_TORQUE,
     RUN_MODE_INDEX, RUN_MODE_OPERATION,
-    Motor, channel_for_id, active_brake, PLACEHOLDER_ARMATURE,
+    Motor, channel_for_id, active_brake, armature_reference,
     validate_args, report_invalid_args,
     DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_stop_limit, stop_limit_for,
     add_can_timeout_option, can_timeout_problem, arm_can_watchdog, install_stop_signals,
@@ -184,10 +184,17 @@ def step_offset(args, step):
 
 
 def min_armature(model):
-    known = PLACEHOLDER_ARMATURE.get(model)
+    known, _ = armature_reference(model)
     if known is None:
         return FALLBACK_MIN_ARMATURE
     return POS_MIN_ARMATURE_FRACTION * known
+
+
+def armature_basis(model):
+    known, source = armature_reference(model)
+    if known is None:
+        return f"fallback inertia {FALLBACK_MIN_ARMATURE:g} kg*m^2"
+    return f"{POS_MIN_ARMATURE_FRACTION:g} x the {model.upper()} {source} armature {known:g} kg*m^2"
 
 
 def runtime_limits(args):
@@ -368,7 +375,7 @@ def confirm(args):
         print(f"Each step: {args.rest_time:g} s at the reference, {args.hold_time:g} s at reference + step, "
               f"{args.rest_time:g} s at the reference; about {run_duration(args):.0f} s in total")
         print(f"Abort if the joint moves more than {math.degrees(limits['deviation']):.2f} deg from the reference "
-              f"or faster than {limits['speed']:.2f} rad/s")
+              f"or faster than {limits['speed']:.2f} rad/s (speed bound from {armature_basis(args.model)})")
         print("The joint moves by the step and back; it is not commanded to run.")
         print("WARNING: Verify zero calibration, secure the robot, and prepare the E-stop.")
         if not sys.stdin.isatty():

@@ -7,7 +7,7 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from common import PLACEHOLDER_ARMATURE
+from common import armature_reference
 
 SKIP_S = 0.015
 MAX_COND = 100.0
@@ -170,10 +170,10 @@ def main():
           + (f" (+-{j_stderr:.6f}, 1-sigma)" if j_stderr is not None else "")
           + f", friction {friction:+.4f} N*m, R^2 {r2:.4f}")
 
-    placeholder = PLACEHOLDER_ARMATURE.get(model)
+    placeholder, source = armature_reference(model)
     if placeholder:
         ratio = J / placeholder if placeholder else float("nan")
-        print(f"Simulator {model}: {placeholder} kg*m^2, measured/simulator {ratio:.1f}x")
+        print(f"{source.capitalize()} {model}: {placeholder} kg*m^2, measured/{source} {ratio:.1f}x")
 
     if len(results) == 2:
         print("WARNING: Two runs determine the fit exactly, so R² is 1 by construction; add a third run.")

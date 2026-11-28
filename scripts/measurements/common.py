@@ -31,6 +31,7 @@ MECH_POS_INDEX = MECHANICAL_POSITION_INDEX
 FAULT_STA_INDEX = FAULT_STATUS_INDEX
 PLACEHOLDER_ARMATURE = {model: values["armature"] for model, values in MOTOR_PHYSICS.items()}
 PLACEHOLDER_DAMPING = {"rs02": 0.2, "rs03": 0.2}
+SPEC_SHEET_ARMATURE = {"rs00": 0.001, "rs05": 0.0007, "rs10p": 0.00625}
 CAN_TIMEOUT_INDEX = 0x7028
 CAN_TIMEOUT_COUNTS_PER_MS = 20
 DEFAULT_CAN_TIMEOUT_MS = 1000
@@ -94,6 +95,24 @@ def install_stop_signals():
 
     signal.signal(signal.SIGHUP, handler)
     signal.signal(signal.SIGTERM, handler)
+
+
+def armature_reference(model):
+    if model in PLACEHOLDER_ARMATURE:
+        return PLACEHOLDER_ARMATURE[model], "simulator"
+    if model in SPEC_SHEET_ARMATURE:
+        return SPEC_SHEET_ARMATURE[model], "spec sheet"
+    return None, None
+
+
+def gain_problems(args, model):
+    spec = SPECS[model]
+    problems = []
+    for name, limit in (("kp", spec.kp_max), ("kd", spec.kd_max)):
+        value = getattr(args, name, None)
+        if value is not None and math.isfinite(value) and value > limit:
+            problems.append(f"--{name} {value} exceeds the {model.upper()} frame range {limit}")
+    return problems
 
 
 def outside_position_domain(position):

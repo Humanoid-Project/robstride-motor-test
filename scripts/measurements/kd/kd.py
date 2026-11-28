@@ -30,6 +30,7 @@ from common import (
     validate_args, report_invalid_args,
     DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_stop_limit,
     add_can_timeout_option, can_timeout_problem, arm_can_watchdog, install_stop_signals,
+    gain_problems,
 )
 from robonex_common.can import drain
 
@@ -123,6 +124,7 @@ def main():
     problem = can_timeout_problem(args)
     if problem:
         problems.append(problem)
+    problems.extend(gain_problems(args, args.model))
     if problems:
         report_invalid_args(problems)
         return 1

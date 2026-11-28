@@ -17,10 +17,11 @@ SETTLE_BAND = 0.05
 STEADY_FRACTION = 0.25
 FIT_DT = 1e-4
 FIT_GRID = 60
-FIT_J_MIN = 0.001
+FIT_J_MIN = 1e-4
 FIT_J_MAX = 0.3
 FIT_REFINE = 30
-J_CANDIDATES = {"rs02": (0.0042, 0.0173), "rs03": (0.02, 0.064)}
+J_CANDIDATES = {"rs02": (0.0042, 0.0173), "rs03": (0.02, 0.064),
+                "rs00": (0.001,), "rs05": (0.0007,), "rs10p": (0.00625,)}
 NUMERIC = ("gap_s", "t_send_mono", "t_send_wall", "tx_ts", "tx_hw_ts", "t_rx_mono", "rx_ts", "rx_hw_ts",
            "cmd_pos", "cmd_torque", "pos_rad", "vel_rad_s", "torque_nm", "temp_c")
 
@@ -298,8 +299,9 @@ def fit_inertia(trials, kp, kd, delay, coulomb, stiction, fit_window, candidates
     named = [(j, rms(j)) for j in candidates]
     best = None
     if free:
-        ratio = (FIT_J_MAX / FIT_J_MIN) ** (1.0 / (FIT_GRID - 1))
-        grid = [FIT_J_MIN * ratio ** k for k in range(FIT_GRID)]
+        j_min = max(FIT_J_MIN, kd * FIT_DT)
+        ratio = (FIT_J_MAX / j_min) ** (1.0 / (FIT_GRID - 1))
+        grid = [j_min * ratio ** k for k in range(FIT_GRID)]
         scores = [rms(j) for j in grid]
         k = min(range(len(grid)), key=lambda i: scores[i])
         lo = math.log(grid[max(k - 1, 0)])
@@ -582,7 +584,8 @@ def main(argv=None):
     p.add_argument("--stiction", type=float, default=0.0, help="Position mode fit: breakaway torque in N*m")
     p.add_argument("--fit-ms", type=float, default=150.0, help="Position mode fit: window after the step frame")
     p.add_argument("--j-candidates", type=float, nargs="+", default=None,
-                   help="Position mode fit: inertias to score (default RS02 0.0042 0.0173, RS03 0.02 0.064)")
+                   help="Position mode fit: inertias to score (default RS02 0.0042 0.0173, RS03 0.02 0.064; "
+                        "spec-sheet rotor inertia RS00 0.001, RS05 0.0007, RS10P 0.00625)")
     p.add_argument("--no-free-j", action="store_true", help="Position mode fit: score only the candidates")
     args = p.parse_args(argv)
     for name in ("coulomb", "stiction", "fit_ms"):
