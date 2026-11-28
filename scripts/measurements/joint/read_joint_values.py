@@ -59,6 +59,8 @@ def read_mech_position(bus, host_id, motor_id, timeout=0.1):
             continue
         if int.from_bytes(payload[0:2], "little") != MECHANICAL_POSITION_INDEX:
             continue
+        if data16 >> 8:
+            return None
         return struct.unpack_from("<f", payload, 4)[0]
     return None
 
@@ -91,7 +93,7 @@ def format_position(position):
     return f"{position:+8.4f} rad ({math.degrees(position):+8.2f} deg)"
 
 
-def channel_lines(channel, joints, positions, error=None, rate=None):
+def channel_lines(channel, joints, positions, error=None, rate=None, failure=None):
     title = f"[{channel}] {', '.join(channel_groups(channel)) or 'no mapped group'}"
     if rate is not None:
         title += f"   {rate:6.1f} Hz"
@@ -99,6 +101,8 @@ def channel_lines(channel, joints, positions, error=None, rate=None):
     if error is not None:
         lines.append(f"  open failed: {error.reason}")
         lines.append(f"  -> {error.hint}")
+    if failure is not None:
+        lines.append(f"  CAN error: {failure}")
     lines.append(f"  {'ID':>3}  {'joint':<20}  {'group':<9}  {'model':<5}  {'position':>28}")
     for joint in joints:
         position = None if error is not None else positions.get(joint.motor_id)
@@ -112,6 +116,7 @@ def read_once(channels, interface, host_id, timeout, log=None):
     for channel, joints in channels.items():
         positions = {}
         error = None
+        failure = None
         try:
             bus = open_bus(channel, interface)
         except BusOpenError as exc:
@@ -122,10 +127,12 @@ def read_once(channels, interface, host_id, timeout, log=None):
                     positions[joint.motor_id] = read_mech_position(bus, host_id, joint.motor_id, timeout)
                     if log is not None:
                         log.write(channel, joint, positions[joint.motor_id])
+            except (can.CanError, OSError) as exc:
+                failure = exc
             finally:
                 bus.shutdown()
         missing += sum(1 for joint in joints if positions.get(joint.motor_id) is None)
-        print("\n".join(channel_lines(channel, joints, positions, error)))
+        print("\n".join(channel_lines(channel, joints, positions, error, failure=failure)))
         print()
     return missing
 
@@ -153,15 +160,18 @@ def poll_worker(channel, joints, interface, host_id, timeout, shared, stop, log)
                 with shared["lock"]:
                     shared["rates"][channel] = count / (now - t0)
                 t0, count = now, 0
-    except can.CanError as exc:
+    except (can.CanError, OSError) as exc:
         with shared["lock"]:
-            shared["notes"].append(f"[{channel}] CAN error: {exc}")
+            shared["notes"].append(f"[{channel}] CAN error: {exc}; its readings stopped")
+            shared["dead"].add(channel)
+            for joint in joints:
+                shared["positions"][joint.motor_id] = None
     finally:
         bus.shutdown()
 
 
 def watch(channels, interface, host_id, timeout, hz, duration, header, log=None, out=sys.stdout):
-    shared = {"lock": threading.Lock(), "positions": {}, "rates": {}, "errors": {}, "notes": []}
+    shared = {"lock": threading.Lock(), "positions": {}, "rates": {}, "errors": {}, "notes": [], "dead": set()}
     stop = threading.Event()
     threads = [
         threading.Thread(target=poll_worker,
@@ -191,12 +201,16 @@ def watch(channels, interface, host_id, timeout, hz, duration, header, log=None,
             out.write("\n".join(lines) + "\n")
             out.flush()
             if duration and time.monotonic() - start >= duration:
-                return
+                break
             time.sleep(1.0 / hz)
+    except KeyboardInterrupt:
+        pass
     finally:
         stop.set()
         for thread in threads:
             thread.join(timeout=2.0)
+    with shared["lock"]:
+        return bool(shared["errors"] or shared["dead"])
 
 
 def select_channels(args, variant):
@@ -259,8 +273,10 @@ def main(argv=None):
     log = CsvLog(args.csv) if args.csv else None
     try:
         if args.watch:
-            watch(channels, args.interface, args.host_id, timeout, args.hz, args.duration, header, log)
-            return 0
+            failed = watch(channels, args.interface, args.host_id, timeout, args.hz, args.duration, header, log)
+            if failed:
+                print("ERROR: a CAN channel failed to open or stopped answering; see the notes above.")
+            return 1 if failed else 0
         print("\n".join(header) + "\n")
         missing = read_once(channels, args.interface, args.host_id, timeout, log)
         total = sum(len(joints) for joints in channels.values())

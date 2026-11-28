@@ -1,9 +1,20 @@
-import os
-from pathlib import Path
-
 import can
 
+try:
+    import robonex_common
+except ValueError as error:
+    if type(error).__name__ != "BusMapError":
+        raise
+    raise SystemExit(f"ERROR: {error}") from None
 from robonex_common.buses import DEFAULT_BUS_MAP, bus_map, bus_map_path
+from robonex_common.identity import (
+    ROBOT_IDENTITY_ENV,
+    ROBOT_IDENTITY_FILE,
+    IdentityError,
+    identity_path,
+    read_identity,
+    require_identity,
+)
 from robonex_common.joints import (
     ALL_MOTORS,
     GROUP_ID_RANGES,
@@ -13,15 +24,17 @@ from robonex_common.joints import (
     canonical_variant,
     motors_for_variant,
 )
+from robonex_common.limits import (
+    PLACEHOLDER_CONSENT_FLAG,
+    PlaceholderLimitError,
+    require_placeholder_consent,
+)
 
-ROBOT_IDENTITY_ENV = "ROBONEX_ROBOT_MODEL_FILE"
-ROBOT_IDENTITY_FILE = Path.home() / ".config" / "robonex" / "robot_model"
 GROUP_ALIASES = {
     "legs": ("left_leg", "right_leg"),
     "arms": ("left_arm", "right_arm"),
 }
 SELECTOR_NAMES = tuple(GROUP_ID_RANGES) + tuple(GROUP_ALIASES) + ("all",)
-PLACEHOLDER_LIMIT_GROUPS = ("head", "left_arm", "right_arm")
 MOTOR_BY_NAME = {
     name: joint for joint in ALL_MOTORS for name in (joint.hardware_name, joint.model_name)
 }
@@ -43,24 +56,49 @@ class BusOpenError(RuntimeError):
         super().__init__(f"{channel}: open failed ({reason}); bring it up with: {self.hint}")
 
 
-def identity_path():
-    configured = os.environ.get(ROBOT_IDENTITY_ENV)
-    return Path(configured).expanduser() if configured else ROBOT_IDENTITY_FILE
-
-
-def attached_variant(path=None):
-    path = identity_path() if path is None else Path(path)
-    try:
-        value = path.read_text(encoding="utf-8").strip()
-    except FileNotFoundError:
-        return None
-    if not value:
-        return None
+def checked_variant(value, path=None):
+    path = identity_path() if path is None else path
     if canonical_variant(value) not in VARIANT_MOTOR_IDS:
         known = ", ".join(sorted(VARIANT_MOTOR_IDS))
         legacy = ", ".join(f"{old} = {new}" for old, new in LEGACY_VARIANT_NAMES.items())
         raise SelectionError(f"{path} names an unknown robot model {value!r} (known: {known}; legacy: {legacy})")
     return canonical_variant(value)
+
+
+def attached_variant(path=None):
+    try:
+        value = read_identity(path)
+    except IdentityError as error:
+        raise SelectionError(str(error)) from None
+    return None if value is None else checked_variant(value, path)
+
+
+def required_variant(path=None):
+    try:
+        value = require_identity(path)
+    except IdentityError as error:
+        raise SelectionError(str(error)) from None
+    return checked_variant(value, path)
+
+
+def add_placeholder_option(parser):
+    parser.add_argument(PLACEHOLDER_CONSENT_FLAG, action="store_true",
+                        help="Also move head and arm motors (IDs 16-27), whose joint limits are unmeasured "
+                             "placeholders; joint-limit checks still use those placeholders")
+
+
+def motion_problems(motor_ids, allow_placeholder_limits, path=None):
+    problems = []
+    try:
+        required_variant(path)
+    except SelectionError as error:
+        problems.append(str(error))
+    registered = [motor_id for motor_id in motor_ids if motor_id in MOTOR_BY_ID]
+    try:
+        require_placeholder_consent(registered, allowed=allow_placeholder_limits)
+    except PlaceholderLimitError as error:
+        problems.append(str(error))
+    return problems
 
 
 def variant_motors(variant):
@@ -168,7 +206,3 @@ def open_bus(channel, interface):
         return can.Bus(channel=channel, interface=interface)
     except (OSError, can.CanError) as error:
         raise BusOpenError(channel, error) from error
-
-
-def has_placeholder_limits(joint):
-    return joint.group in PLACEHOLDER_LIMIT_GROUPS

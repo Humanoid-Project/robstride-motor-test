@@ -2,9 +2,11 @@
 import argparse
 import collections
 import math
+import os
 import queue
 import signal
 import struct
+import sys
 import threading
 import time
 import tkinter as tk
@@ -12,7 +14,10 @@ from tkinter import messagebox, ttk
 
 import can
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from motor_selection import PLACEHOLDER_CONSENT_FLAG, add_placeholder_option, motion_problems
 from robonex_common.joints import MOTOR_BY_ID as JOINT_BY_ID, MOTOR_LIMITS_BY_ID as JOINT_LIMITS_BY_ID, channel_for_motor_id
+from robonex_common.limits import placeholder_motor_ids
 from robonex_common.motors import MOTOR_SPECS
 from robonex_common.protocol import (
     HOST_ID,
@@ -103,7 +108,7 @@ def parse_float_parameter(msg, host_id, motor_id, index):
         return None
 
     response_index = int.from_bytes(data[0:2], byteorder="little", signed=False)
-    if response_index != index:
+    if response_index != index or data16 >> 8:
         return None
 
     return struct.unpack_from("<f", data, 4)[0]
@@ -1239,6 +1244,7 @@ class MotorRunApp:
         self.root = root
         self.closing = False
         self.channel = args.channel
+        self.allow_placeholder_limits = args.allow_placeholder_limits
         root.title(args.window_title)
         root.geometry(args.geometry)
         root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -1278,6 +1284,8 @@ class MotorRunApp:
             return f"Motor ID {motor_id} is not registered."
         if channel_for_motor_id(motor_id) != self.channel:
             return f"Motor ID {motor_id} is not on {self.channel}."
+        if not self.allow_placeholder_limits and placeholder_motor_ids([motor_id]):
+            return f"Motor ID {motor_id} has placeholder joint limits; restart with {PLACEHOLDER_CONSENT_FLAG}."
         for other in self.panels:
             if other is not panel and other.current_motor_id == motor_id:
                 return f"Motor ID {motor_id} is already assigned to another panel."
@@ -1322,6 +1330,7 @@ def parse_args(argv=None):
         default=[DEFAULT_MOTOR_ID],
         help="one or two motor CAN IDs, default: 5",
     )
+    add_placeholder_option(parser)
     args = parser.parse_args(argv)
     if not 1 <= len(args.motor_id) <= 2:
         parser.error("--motor-id accepts one or two IDs")
@@ -1333,6 +1342,9 @@ def parse_args(argv=None):
     channels = {channel_for_motor_id(motor_id) for motor_id in args.motor_id}
     if len(channels) != 1:
         parser.error("two motor IDs must use the same CAN channel")
+    problems = motion_problems(args.motor_id, args.allow_placeholder_limits)
+    if problems:
+        parser.error("; ".join(problems))
     args.channel = channels.pop()
     args.interface = DEFAULT_INTERFACE
     args.host_id = HOST_ID

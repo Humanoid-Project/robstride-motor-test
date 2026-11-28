@@ -17,10 +17,10 @@ from motor_selection import (
     SELECTOR_HELP,
     BusOpenError,
     SelectionError,
-    attached_variant,
-    format_ids,
-    has_placeholder_limits,
+    add_placeholder_option,
+    motion_problems,
     open_bus,
+    required_variant,
     resolve_motors,
     variant_motors,
     variant_summary,
@@ -110,8 +110,7 @@ def main(zero_pose=False):
     parser.add_argument("--target-deg", nargs="+", default=[], metavar="ID=DEG",
                         help="Override the target of a selected motor in degrees, e.g. 26=-1.18 (must lie inside "
                              "that joint's limits)")
-    parser.add_argument("--allow-placeholder-limits", action="store_true",
-                        help="Also move head/arm motors, whose joint limits are unmeasured PLACEHOLDERs")
+    add_placeholder_option(parser)
     add_can_timeout_option(parser)
     parser.set_defaults(
         interface=DEFAULT_INTERFACE,
@@ -124,18 +123,16 @@ def main(zero_pose=False):
     install_stop_signals()
 
     try:
-        variant = attached_variant()
+        variant = required_variant()
         selected = resolve_motors(args.ids or ["legs"], variant)
     except SelectionError as error:
         parser.error(str(error))
     print(variant_summary(variant, variant_motors(variant)))
-    placeholder = [joint for joint in selected if has_placeholder_limits(joint)]
-    if placeholder and not args.allow_placeholder_limits:
-        names = ", ".join(f"{joint.motor_id} {joint.hardware_name}" for joint in placeholder)
-        print(f"Refusing IDs {format_ids(joint.motor_id for joint in placeholder)} ({names}): their joint limits "
-              "are PLACEHOLDERs (head +-30 deg, arms +-45 deg) until measured, so nothing checks that 0 rad "
-              "and the path to it are inside the real range. Check the zero and the free range by hand, then "
-              "add --allow-placeholder-limits.")
+    problems = motion_problems([joint.motor_id for joint in selected], args.allow_placeholder_limits)
+    if problems:
+        for problem in problems:
+            print(f"ERROR: {problem}")
+        print("Nothing moved. For head and arm motors, check the zero and the free range by hand first.")
         return 1
     active_motor_ids = [joint.motor_id for joint in selected]
     overrides = {}
@@ -194,8 +191,9 @@ def main(zero_pose=False):
             channel = channel_for_id(motor_id)
             if current is None:
                 print(f"{motor_id:>3}  {channel:<5}  {JOINT_MAP.get(motor_id, '?'):<18}  "
-                      f"{m['motor'].spec.name:<5}  {'no response':>26}")
-                print(f"ERROR: Motor ID {motor_id} did not respond. Check power, wiring, and ID.")
+                      f"{m['motor'].spec.name:<5}  {'no position':>26}")
+                print(f"ERROR: Motor ID {motor_id} returned no position (no reply, or the read failed). "
+                      "Check power, wiring, and ID; nothing moved.")
                 return 1
             if abs(current) > math.pi:
                 print(f"{motor_id:>3}  {channel:<5}  {JOINT_MAP.get(motor_id, '?'):<18}  "
@@ -368,12 +366,15 @@ def main(zero_pose=False):
 
     except KeyboardInterrupt:
         print("\nStop requested.")
+    except (can.CanError, OSError) as error:
+        print(f"\nERROR: CAN send/receive failed ({error}); stopping.")
+        return 1
     finally:
         masked = {sig: signal.signal(sig, signal.SIG_IGN) for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)}
         for m in motors.values():
             try:
                 m["motor"].stop()
-            except can.CanError:
+            except (can.CanError, OSError):
                 pass
             disarm_can_watchdog(m["motor"])
         for bus in buses.values():

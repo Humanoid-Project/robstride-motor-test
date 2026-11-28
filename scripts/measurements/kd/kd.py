@@ -30,7 +30,7 @@ from common import (
     validate_args, report_invalid_args,
     DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_stop_limit,
     add_can_timeout_option, can_timeout_problem, arm_can_watchdog, install_stop_signals,
-    gain_problems,
+    gain_problems, add_placeholder_option, motion_problems,
 )
 from robonex_common.can import drain
 
@@ -52,6 +52,7 @@ def parse_args():
                    help="Velocity targets in rad/s; the joint does not actually run at these")
     p.add_argument("--repeats", type=int, default=2)
     p.add_argument("--ignore-joint-limit", action="store_true")
+    add_placeholder_option(p)
     p.add_argument("--ramp-time", type=float, default=0.5,
                    help="Seconds to ramp the velocity target in. Set near 0.02 for a step, which "
                         "turns the capture into a command-to-response latency measurement")
@@ -125,6 +126,7 @@ def main():
     if problem:
         problems.append(problem)
     problems.extend(gain_problems(args, args.model))
+    problems.extend(motion_problems([args.motor_id], args.allow_placeholder_limits))
     if problems:
         report_invalid_args(problems)
         return 1

@@ -21,6 +21,7 @@ from common import (
     DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_stop_limit, stop_limit_for,
     add_can_timeout_option, can_timeout_problem, arm_can_watchdog, disarm_can_watchdog,
     install_stop_signals, report_invalid_args,
+    add_placeholder_option, motion_problems,
 )
 from motor_selection import SELECTOR_HELP, SelectionError, attached_variant, format_ids, resolve_motors
 from latency import StampedBus, hw_seconds, stamp
@@ -167,6 +168,7 @@ def parse_args(argv=None):
     p.add_argument("--hw-timestamps", action="store_true",
                    help="Also record the adapter's own timestamps (SO_TIMESTAMPING)")
     p.add_argument("--ignore-joint-limit", action="store_true")
+    add_placeholder_option(p)
     p.add_argument("--out", default=None, help="CSV path (default: data/bus_timing_<channel>_<mode>_<time>.csv)")
     add_can_timeout_option(p)
     p.set_defaults(interface=DEFAULT_INTERFACE, host_id=HOST_ID, limit_margin=DEFAULT_LIMIT_MARGIN_RAD)
@@ -200,7 +202,10 @@ def argument_problems(args):
                 problems.append(f"--{name} is for --mode hold; passive frames carry kp 0 and kd 0")
         if args.ignore_joint_limit:
             problems.append("--ignore-joint-limit is for --mode hold")
+        if args.allow_placeholder_limits:
+            problems.append("--allow-placeholder-limits is for --mode hold")
         return problems
+    problems.extend(motion_problems([joint.motor_id for joint in args.joints], args.allow_placeholder_limits))
     for name in ("kp", "kd"):
         value = getattr(args, name)
         if value is None:

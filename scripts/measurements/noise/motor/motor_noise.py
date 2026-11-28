@@ -15,6 +15,7 @@ from common import (
     DEFAULT_INTERFACE, HOST_ID, SPECS, MOTOR_MODEL,
     RUN_MODE_INDEX, RUN_MODE_OPERATION,
     FeedbackHub, Motor, channel_for_id, active_brake,
+    add_placeholder_option, motion_problems,
 )
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
@@ -34,6 +35,7 @@ def parse_args():
                         help="One or more motor IDs to capture")
     parser.add_argument("--duration", type=float, default=DEFAULT_DURATION,
                         help="Capture time per channel in seconds")
+    add_placeholder_option(parser)
     parser.set_defaults(
         interface=DEFAULT_INTERFACE, host_id=HOST_ID, kd=DEFAULT_KD,
         feedback_timeout=DEFAULT_FEEDBACK_TIMEOUT,
@@ -201,6 +203,7 @@ def main():
         print(f"ERROR: Unsupported motor IDs: {unknown}")
         return 1
     problems = validate_args(args, motor_ids)
+    problems += motion_problems(motor_ids, args.allow_placeholder_limits)
     if problems:
         print("Invalid arguments:")
         for problem in problems:

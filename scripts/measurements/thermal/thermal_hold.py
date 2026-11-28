@@ -26,7 +26,8 @@ from common import (
     resolve_model,
     HOST_ID, DEFAULT_INTERFACE, SPECS, RATED_TORQUE,
     RUN_MODE_INDEX, RUN_MODE_OPERATION, FAULT_STA_INDEX,
-    Motor, channel_for_id, decode_fault_bits, active_brake,
+    Motor, channel_for_id, fault_word_text, active_brake,
+    add_placeholder_option, motion_problems,
     validate_args, report_invalid_args,
     DEFAULT_LIMIT_MARGIN_RAD, exceeds_joint_limit, exceeds_stop_limit, outside_position_domain,
     add_can_timeout_option, can_timeout_problem, arm_can_watchdog, install_stop_signals,
@@ -87,6 +88,7 @@ def parse_args(argv=None):
     p.add_argument("--max-vel", type=finite_float, default=1.0, help="Stop above this speed in rad/s")
     p.add_argument("--ignore-joint-limit", action="store_true",
                    help="Disable joint-limit checks for bench tests only (not with --target-deg)")
+    add_placeholder_option(p)
     add_can_timeout_option(p)
     p.set_defaults(interface=DEFAULT_INTERFACE, host_id=HOST_ID, feedback_timeout=0.3,
                    limit_margin=DEFAULT_LIMIT_MARGIN_RAD, out=None)
@@ -118,6 +120,7 @@ def argument_problems(args):
         problems.append(f"--rate-hz {args.rate_hz} is above {MAX_RATE_HZ:g}")
     if args.max_vel <= 0:
         problems.append(f"--max-vel must be positive ({args.max_vel})")
+    problems.extend(motion_problems([args.motor_id], args.allow_placeholder_limits))
     if args.max_error_deg > MAX_TRACKING_DEG:
         problems.append(f"--max-error-deg {args.max_error_deg} is above {MAX_TRACKING_DEG:g}")
     if args.target_deg is not None:
@@ -220,11 +223,7 @@ def start_hold(motor, args):
     time.sleep(0.02)
     drain(motor.bus)
     fault_reg = motor.read_param(FAULT_STA_INDEX, fmt="<I", timeout=0.3)
-    if fault_reg is None:
-        print("Fault word 0x3022: unread")
-    else:
-        bits = decode_fault_bits(fault_reg)
-        print(f"Fault word 0x3022: 0x{fault_reg:08X}" + (f" ({', '.join(bits)})" if bits else " (OK)"))
+    print(f"Fault word 0x3022: {fault_word_text(fault_reg, args.model)}")
     if not arm_can_watchdog(motor, args.can_timeout_ms):
         return None, ("watchdog", "CAN watchdog not armed")
     motor.write_param_u8(RUN_MODE_INDEX, RUN_MODE_OPERATION)

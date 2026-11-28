@@ -21,7 +21,8 @@ from common import (
     resolve_model,
     HOST_ID, DEFAULT_INTERFACE, SPECS, RATED_TORQUE, PEAK_TORQUE,
     RUN_MODE_INDEX, RUN_MODE_OPERATION, MECH_POS_INDEX, FAULT_STA_INDEX,
-    Motor, channel_for_id, decode_fault_bits, active_brake,
+    Motor, channel_for_id, fault_word_text, active_brake,
+    add_placeholder_option, motion_problems,
     validate_args, report_invalid_args,
     JOINT_LIMITS_RAD, DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_joint_limit, exceeds_stop_limit, MOTOR_MODEL,
     add_can_timeout_option, can_timeout_problem, arm_can_watchdog, install_stop_signals,
@@ -71,6 +72,7 @@ def parse_args():
                    help="Torque search upper bound in N*m; a run ends without a breakaway if no movement by then")
     p.add_argument("--ignore-joint-limit", action="store_true",
                    help="Disable joint-limit checks for unloaded bench tests only")
+    add_placeholder_option(p)
     p.add_argument("--pose", choices=["current", "zero", "stand"], default="current",
                    help="Start pose: current (as found), zero, or stand (the policy default pose); the measured and held "
                         "motors move there slowly before each search")
@@ -487,16 +489,13 @@ def capture_once(args, sign, run_index):
         time.sleep(0.02)
         initial_pos = motor.read_param_f32(MECH_POS_INDEX, timeout=0.3)
         if initial_pos is None:
-            print(f"ERROR: Motor ID {args.motor_id} did not reply on {args.channel}.")
+            print(f"ERROR: Motor ID {args.motor_id} returned no position on {args.channel} (no reply, or the read "
+                  "failed); nothing moved.")
             return 1, None, "no_response"
         fault_reg = motor.read_param(FAULT_STA_INDEX, fmt="<I", timeout=0.3)
         if fault_reg is None:
-            print("WARNING: Fault register 0x3022 could not be read.")
-            fault_text = "unread"
-        else:
-            bits = decode_fault_bits(fault_reg)
-            fault_text = f"0x{fault_reg:08X}" + (f" ({', '.join(bits)})" if bits else " (OK)")
-        print(f"Position: {math.degrees(initial_pos):+.2f} deg, fault {fault_text}")
+            print("WARNING: Fault register 0x3022 could not be read (no reply, or the read failed).")
+        print(f"Position: {math.degrees(initial_pos):+.2f} deg, fault {fault_word_text(fault_reg, args.model)}")
 
         if not arm_can_watchdog(motor, args.can_timeout_ms):
             return 1, None, "watchdog_not_armed"
@@ -683,6 +682,7 @@ def main():
     if not problems and args.pose != "current":
         targets = {i: pose_target(i, args.pose) for i in [args.motor_id] + args.hold_ids}
         problems += limit_problems(targets, args) + roll_problems(targets)
+    problems.extend(motion_problems([args.motor_id] + args.hold_ids, args.allow_placeholder_limits))
     if report_invalid_args(problems):
         return 1
 

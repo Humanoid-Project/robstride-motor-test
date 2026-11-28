@@ -67,7 +67,7 @@ def send(bus, comm_type, data16, target_id, data=None):
         raise MotorIdError(f"CAN send failed: {exc}") from exc
 
 
-def receive_matching(bus, comm_type, destination, target_id, timeout, index=None):
+def receive_matching(bus, comm_type, destination, target_id, timeout, index=None, with_status=False):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
@@ -85,8 +85,8 @@ def receive_matching(bus, comm_type, destination, target_id, timeout, index=None
         if index is not None:
             if len(payload) < 2 or int.from_bytes(payload[:2], "little") != index:
                 continue
-        return payload
-    return None
+        return (payload, data16 >> 8) if with_status else payload
+    return (None, None) if with_status else None
 
 
 def query_device_id(bus, target_id, timeout=QUERY_TIMEOUT):
@@ -107,17 +107,18 @@ def query_mech_position(bus, target_id, timeout=QUERY_TIMEOUT):
     payload = bytearray(8)
     struct.pack_into("<H", payload, 0, MECHANICAL_POSITION_INDEX)
     send(bus, COMM_PARAMETER_READ, HOST_ID, target_id, bytes(payload))
-    reply = receive_matching(
+    reply, status = receive_matching(
         bus,
         COMM_PARAMETER_READ,
         HOST_ID,
         target_id,
         timeout,
         index=MECHANICAL_POSITION_INDEX,
+        with_status=True,
     )
     if reply is None:
         return None
-    return {"motor_id": target_id, "uid": None, "source": "mechPos"}
+    return {"motor_id": target_id, "uid": None, "source": "mechPos failed" if status else "mechPos"}
 
 
 def probe_motor(bus, target_id, timeout=QUERY_TIMEOUT):
@@ -146,7 +147,12 @@ def open_bus(channel):
 
 
 def format_found(result):
-    detail = f"UID={result['uid']}" if result["uid"] else "mechPos reply"
+    if result["uid"]:
+        detail = f"UID={result['uid']}"
+    elif result["source"] == "mechPos failed":
+        detail = "mechPos reply with the fail status"
+    else:
+        detail = "mechPos reply"
     return f"ID {result['motor_id']} ({detail})"
 
 
@@ -210,7 +216,8 @@ def run_check(args):
     for channel in selected_channels(args, expected):
         targets = expected.get(channel, ())
         if not targets:
-            print(f"{channel}: no motors expected on this channel")
+            print(f"{channel}: ERROR - no motors expected on this channel")
+            failed = True
             continue
         bus = None
         try:

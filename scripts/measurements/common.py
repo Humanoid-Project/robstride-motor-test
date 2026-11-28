@@ -1,9 +1,15 @@
 import argparse
 import math
+import os
 import signal
 import struct
+import sys
 import time
 
+SCRIPTS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, SCRIPTS_DIR)
+from motor_selection import PLACEHOLDER_CONSENT_FLAG, add_placeholder_option, motion_problems
 from robonex_common.can import FeedbackHub, Motor
 from robonex_common.joints import ALL_MOTORS, MOTOR_BY_ID, MOTOR_LIMITS_BY_ID
 from robonex_common.joints import channel_for_motor_id as channel_for_id
@@ -95,6 +101,13 @@ def install_stop_signals():
 
     signal.signal(signal.SIGHUP, handler)
     signal.signal(signal.SIGTERM, handler)
+
+
+def fault_word_text(value, model):
+    if value is None:
+        return "unread (no reply, or the read failed)"
+    bits = decode_fault_bits(value, model)
+    return f"0x{value:08X}" + (f" ({', '.join(bits)})" if bits else " (OK)")
 
 
 def armature_reference(model):

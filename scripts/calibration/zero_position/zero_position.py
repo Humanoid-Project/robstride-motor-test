@@ -64,6 +64,8 @@ def read_mech_position(bus, host_id, motor_id, timeout=0.2):
         payload = bytes(msg.data)
         if len(payload) < 8 or int.from_bytes(payload[0:2], "little") != MECHANICAL_POSITION_INDEX:
             continue
+        if data16 >> 8:
+            return None
         return struct.unpack_from("<f", payload, 4)[0]
     return None
 
@@ -167,7 +169,7 @@ def main():
             before[motor_id] = position
 
         if missing:
-            print(f"WARNING: No reply from IDs {', '.join(str(i) for i in missing)}; skipped.")
+            print(f"WARNING: No position (no reply, or the read failed) from IDs {', '.join(str(i) for i in missing)}; skipped.")
 
         if not before:
             print("No motors available. Stopping.")
@@ -202,7 +204,7 @@ def main():
 
             after = read_mech_position_retry(bus, HOST_ID, motor_id)
             if after is None:
-                print(f"ID {motor_id} ({channel}, {joint_name(motor_id)}): FAILED - no reply")
+                print(f"ID {motor_id} ({channel}, {joint_name(motor_id)}): FAILED - no position read back")
                 continue
 
             success = at_zero(after, args.pos_range)
@@ -215,6 +217,9 @@ def main():
         return 0 if not missing and ok_count == len(before) else 1
     except BusOpenError as error:
         print(f"ERROR: {error}")
+        return 1
+    except (can.CanError, OSError) as error:
+        print(f"ERROR: CAN send/receive failed ({error}); check the result of every motor with read_joint_values.py")
         return 1
     except KeyboardInterrupt:
         print("\nCancelled.")

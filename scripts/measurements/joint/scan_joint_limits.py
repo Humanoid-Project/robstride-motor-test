@@ -16,6 +16,7 @@ from common import (
     DEFAULT_INTERFACE, DEFAULT_LIMIT_MARGIN_RAD, HOST_ID, JOINT_MAP, JOINT_LIMITS_RAD, MECH_POS_INDEX, MOTOR_MODEL,
     RUN_MODE_INDEX, RUN_MODE_OPERATION, SPECS, Motor, add_can_timeout_option, arm_can_watchdog, can_timeout_problem,
     channel_for_id, disarm_can_watchdog, install_stop_signals, joint_limit_for,
+    add_placeholder_option, motion_problems,
 )
 from robonex_common.can import FeedbackHub
 from robonex_common.foot_roll import foot_roll
@@ -68,6 +69,7 @@ def parse_args(argv=None):
     parser.add_argument("--motor-id", "--motor-ids", dest="motor_id", nargs="+",
                         type=lambda v: int(v, 0), default=None,
                         help="With --passive only: motor IDs to read (default: every motor)")
+    add_placeholder_option(parser)
     add_can_timeout_option(parser)
     parser.set_defaults(
         interface=DEFAULT_INTERFACE, host_id=HOST_ID,
@@ -712,6 +714,7 @@ def main(argv=None):
     measured = LEGS[args.leg]
     held = next(ids for name, ids in LEGS.items() if name != args.leg)
     problems = [p for p in [can_timeout_problem(args)] if p]
+    problems += motion_problems(measured + held, args.allow_placeholder_limits)
     problems += [f"ID {i}: hold target {math.degrees(hold_target(i, args.limit_margin)):+.1f} deg is outside its joint limit"
                  for i in held if limit_excess(hold_target(i, args.limit_margin), i, args.limit_margin) > 0.0]
     if problems:

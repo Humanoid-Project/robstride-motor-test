@@ -23,6 +23,7 @@ from common import (
     validate_args, report_invalid_args,
     DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_stop_limit, stop_limit_for,
     add_can_timeout_option, can_timeout_problem, arm_can_watchdog, install_stop_signals,
+    add_placeholder_option, motion_problems,
 )
 from robonex_common.can import drain
 from robonex_common.protocol import COMM_FEEDBACK, COMM_OPERATION, float_to_uint, parse_arbitration_id
@@ -240,6 +241,7 @@ def parse_args(argv=None):
     p.add_argument("--hw-timestamps", action="store_true",
                    help="Also record the adapter's own timestamps (SO_TIMESTAMPING)")
     p.add_argument("--ignore-joint-limit", action="store_true")
+    add_placeholder_option(p)
     add_can_timeout_option(p)
     p.set_defaults(interface=DEFAULT_INTERFACE, host_id=HOST_ID,
                    feedback_timeout=0.3, limit_margin=DEFAULT_LIMIT_MARGIN_RAD, out=None)
@@ -264,6 +266,7 @@ def argument_problems(args):
     cap = torque_cap(args.model)
     if args.motor_id == args.host_id:
         problems.append(f"--motor-id must differ from the host ID {args.host_id:#x}")
+    problems.extend(motion_problems([args.motor_id], args.allow_placeholder_limits))
     if math.isfinite(args.kp) and args.kp > spec.kp_max:
         problems.append(f"--kp {args.kp} exceeds the {args.model.upper()} frame range {spec.kp_max}")
     if math.isfinite(args.kd) and args.kd > spec.kd_max:

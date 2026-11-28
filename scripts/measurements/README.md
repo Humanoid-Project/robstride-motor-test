@@ -63,6 +63,7 @@ Armature is the rotational inertia that resists angular acceleration, measured i
 | - | `--torques` | `Required` | Set test torques in N·m |
 | - | `--repeats` | `1` | Set repeats per torque |
 | - | `--ignore-joint-limit` | Off | Disable joint-limit checks |
+| - | `--allow-placeholder-limits` | Off | Allow head and arm motors (`16`–`27`), whose joint limits are PLACEHOLDERs; limit checks still use them |
 | - | `--max-vel` | `5.0` | Stop a run at this output speed in rad/s, at most 10 |
 | - | `--can-timeout-ms` | `1000` | Motor CAN watchdog for the run (0x7028, not saved, cleared after the run); `0` turns it off |
 
@@ -115,6 +116,7 @@ Damping is the velocity-proportional resisting torque, measured in N·m/(rad/s).
 | - | `--speeds` | `Required` | Set test speeds in rad/s |
 | - | `--repeats` | `1` | Set repeats per speed |
 | - | `--ignore-joint-limit` | Off | Disable joint-limit checks |
+| - | `--allow-placeholder-limits` | Off | Allow head and arm motors (`16`–`27`), whose joint limits are PLACEHOLDERs; limit checks still use them |
 | - | `--max-turns` | `0.5` | Stop a run after this many output turns from its start, at most 1.5 |
 | - | `--hold-time` | `1.5` | Recording time at constant speed in s, at most 5 |
 | - | `--can-timeout-ms` | `1000` | Motor CAN watchdog for the run (0x7028, not saved, cleared after the run); `0` turns it off |
@@ -152,6 +154,7 @@ Friction is the breakaway torque required to start a stationary joint moving, me
 | - | `--repeats` | `1` | Set repeats per direction |
 | - | `--max-torque` | `1.0` | Torque search upper bound in N·m; the time limit grows with it |
 | - | `--ignore-joint-limit` | Off | Disable joint-limit checks |
+| - | `--allow-placeholder-limits` | Off | Allow head and arm motors (`16`–`27`), whose joint limits are PLACEHOLDERs; limit checks still use them |
 | - | `--pose` | `current` | Start pose before each search: `current`, `zero`, or `stand` (policy default pose); refused outside the joint limits or the 12° foot-roll clip |
 | - | `--hold-ids` | - | Motor IDs on the same channel held at the start pose with their deploy gains during the search |
 | - | `--can-timeout-ms` | `1000` | Motor CAN watchdog for the run (0x7028, not saved, cleared after the run); `0` turns it off |
@@ -193,6 +196,7 @@ kp is the position gain the joint actually honours, as a fraction of the value c
 | - | `--offsets-deg` | `-6 -4 -2 2 4 6` | Set step offsets from the reference, in degrees |
 | - | `--repeats` | `2` | Set repeats per offset |
 | - | `--ignore-joint-limit` | Off | Disable joint-limit checks |
+| - | `--allow-placeholder-limits` | Off | Allow head and arm motors (`16`–`27`), whose joint limits are PLACEHOLDERs; limit checks still use them |
 | - | `--ramp-rate` | `0.15` | Set the commanded position slew between offsets, rad/s |
 | - | `--can-timeout-ms` | `1000` | Motor CAN watchdog for the run (0x7028, not saved, cleared after the run); `0` turns it off |
 
@@ -228,6 +232,7 @@ velocity target is stepped, so the joint shifts by kd * vel_target / kp without 
 | - | `--vel-targets` | `-1.0 -0.5 0.5 1.0` | Set velocity targets in rad/s |
 | - | `--repeats` | `2` | Set repeats per target |
 | - | `--ignore-joint-limit` | Off | Disable joint-limit checks |
+| - | `--allow-placeholder-limits` | Off | Allow head and arm motors (`16`–`27`), whose joint limits are PLACEHOLDERs; limit checks still use them |
 | - | `--ramp-time` | `0.5` | Set seconds to ramp the velocity target in; near `0.02` measures latency |
 | - | `--sample-all` | Off | Record the whole hold instead of the settled window |
 | - | `--can-timeout-ms` | `1000` | Motor CAN watchdog for the run (0x7028, not saved, cleared after the run); `0` turns it off |
@@ -275,6 +280,7 @@ Latency is the time from a command frame leaving the CAN adapter to the motor's 
 | - | `--phase-span-ms` | `0.6` | Spread the gaps evenly over this many milliseconds |
 | - | `--hw-timestamps` | Off | Also record the adapter's own timestamps (needs gs_usb hardware timestamp support) |
 | - | `--ignore-joint-limit` | Off | Disable joint-limit checks |
+| - | `--allow-placeholder-limits` | Off | Allow head and arm motors (`16`–`27`), whose joint limits are PLACEHOLDERs; limit checks still use them |
 | - | `--can-timeout-ms` | `1000` | Motor CAN watchdog for the run (0x7028, not saved, cleared after the run); `0` turns it off |
 
 ```bash
@@ -346,6 +352,7 @@ python3 scripts/measurements/latency/analyze_latency.py scripts/measurements/lat
 | - | `--kd` | - | Velocity gain; `hold` only, required there |
 | - | `--hw-timestamps` | Off | Also record the adapter's own timestamps (needs gs_usb hardware timestamp support) |
 | - | `--ignore-joint-limit` | Off | Disable joint-limit checks; `hold` only |
+| - | `--allow-placeholder-limits` | Off | Allow head and arm motors (`16`–`27`), whose joint limits are PLACEHOLDERs; limit checks still use them; `hold` only |
 | - | `--out` | `data/bus_timing_<channel>_<mode>_<time>.csv` | CSV path; an existing file is never overwritten |
 | - | `--can-timeout-ms` | `1000` | Motor CAN watchdog for the run (0x7028, not saved, cleared after the run); `hold` only, `0` turns it off |
 
@@ -456,16 +463,17 @@ python3 scripts/measurements/torque/torque.py --ids 25
 | - | `--max-error-deg` | `10.0` | Stop when the tracking error exceeds this many degrees, at most 25 |
 | - | `--max-vel` | `1.0` | Stop above this speed in rad/s |
 | - | `--ignore-joint-limit` | Off | Disable joint-limit checks |
+| - | `--allow-placeholder-limits` | Off | Allow head and arm motors (`16`–`27`), whose joint limits are PLACEHOLDERs; limit checks still use them |
 | - | `--can-timeout-ms` | `1000` | Motor CAN watchdog for the run (0x7028, not saved, cleared after the run); `0` turns it off |
 
 ```bash
 # Example
 python3 scripts/measurements/thermal/thermal_hold.py --motor-id 21 --kp 40 --kd 2 --ambient-c 24 \
-  --ignore-joint-limit --plateau-stop
+  --ignore-joint-limit --allow-placeholder-limits --plateau-stop
 
 # Second run at a higher load
 python3 scripts/measurements/thermal/thermal_hold.py --motor-id 21 --kp 40 --kd 2 --tau-ff 1.5 --ambient-c 24 \
-  --ignore-joint-limit --max-minutes 30
+  --ignore-joint-limit --allow-placeholder-limits --max-minutes 30
 ```
 
 <br>
@@ -526,6 +534,7 @@ Measures one leg at a time: the six motors of `--leg` are released together whil
 | - | `--leg` | - | Leg to measure (`left` or `right`); the other leg is held at 0 |
 | - | `--passive` | Off | Read-only scan, no motor enabled |
 | - | `--motor-id`, `--motor-ids` | All motors | Motors to read with `--passive` |
+| - | `--allow-placeholder-limits` | Off | Accepted for every motion tool; `--leg` holds leg motors only, which never need it |
 | - | `--can-timeout-ms` | `1000` | Motor CAN watchdog for this run (`0` disables, max `5000`) |
 
 ```bash
@@ -553,6 +562,7 @@ Enables stationary motors with velocity damping and records type `0x02` position
 | --- | --- | --- | --- |
 | - | `--motor-id` | All motors | Select one or more motors to capture |
 | - | `--duration` | `60` | Set simultaneous capture time per active CAN channel |
+| - | `--allow-placeholder-limits` | Off | Allow head and arm motors (`16`–`27`), whose joint limits are PLACEHOLDERs; limit checks still use them |; needed for the default set
 
 ```bash
 # Example

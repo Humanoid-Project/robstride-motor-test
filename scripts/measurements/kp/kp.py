@@ -38,7 +38,8 @@ from common import (
     resolve_model,
     HOST_ID, DEFAULT_INTERFACE, SPECS,
     RUN_MODE_INDEX, RUN_MODE_OPERATION, FAULT_STA_INDEX,
-    Motor, channel_for_id, decode_fault_bits, active_brake,
+    Motor, channel_for_id, active_brake,
+    add_placeholder_option, motion_problems,
     validate_args, report_invalid_args,
     JOINT_LIMITS_RAD, DEFAULT_LIMIT_MARGIN_RAD, joint_limit_for, exceeds_stop_limit,
     PEAK_TORQUE, gain_problems,
@@ -63,6 +64,7 @@ def parse_args():
     p.add_argument("--repeats", type=int, default=2)
     p.add_argument("--ignore-joint-limit", action="store_true",
                    help="Unloaded bench tests only")
+    add_placeholder_option(p)
     p.add_argument("--ramp-rate", type=float, default=0.15,
                    help="Commanded position slew while moving between offsets, rad/s")
     add_can_timeout_option(p)
@@ -78,6 +80,7 @@ def argument_problems(args):
     if problem:
         problems.append(problem)
     problems.extend(gain_problems(args, args.model))
+    problems.extend(motion_problems([args.motor_id], args.allow_placeholder_limits))
     if math.isfinite(args.kp) and args.kp > 0:
         largest = max(abs(o) for o in args.offsets_deg)
         torque = args.kp * math.radians(largest)
